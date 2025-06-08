@@ -2,8 +2,33 @@
 #include "FS.h"
 #include "SD.h"
 #include "SPI.h"
+/* include's for accel sensor */
+#include<Wire.h>
+#include<ADXL345_WE.h>
+
+/*****************************************************************************************/
+/*                                    GENERAL DEFINE                                     */
+/*****************************************************************************************/
+
+/*****************************************************************************************/
+/*                                    PROJECT DEFINE                                     */
+/*****************************************************************************************/
+#define ADXL345_I2CADDR 0x53 // 0x1D if SDO = HIGH
+
+/*****************************************************************************************/
+/*                                     TYPEDEF ENUM                                      */
+/*****************************************************************************************/
 
 
+/*****************************************************************************************/
+/*                                   TYPEDEF STRUCT                                      */
+/*****************************************************************************************/
+
+
+/*****************************************************************************************/
+/*                                      VARIABLES                                        */
+/*****************************************************************************************/
+ADXL345_WE myAcc = ADXL345_WE(ADXL345_I2CADDR);
 
 
 /*************************************************************************************************/
@@ -245,14 +270,21 @@ return: void
 **************************************************************************************************/
 /*************************************************************************************************/
 void setup() {
-  Serial.begin(115200);
+  uint8_t cardType = CARD_NONE;
+  uint64_t cardSize = 0;
 
+  /****************** Initializing ********************/
+  Serial.begin(115200);
+  Wire.begin(); /* Initialize I2C */
+
+  /************* Initializing SD-Card *****************/
+  Serial.println("SD-Card Initializing start...");
   if (!SD.begin()) {
 
     Serial.println("Card Mount Failed");
     return;
   }
-  uint8_t cardType = SD.cardType();
+  cardType = SD.cardType();
 
   if (cardType == CARD_NONE) {
     Serial.println("No SD card attached");
@@ -269,24 +301,26 @@ void setup() {
   } else {
     Serial.println("UNKNOWN");
   }
-
-  uint64_t cardSize = SD.cardSize() / (1024 * 1024);
+  cardSize = SD.cardSize() / (1024 * 1024);
   Serial.printf("SD Card Size: %lluMB\n", cardSize);
-
-  listDir(SD, "/", 0);
-  createDir(SD, "/mydir");
-  listDir(SD, "/", 0);
-  removeDir(SD, "/mydir");
-  listDir(SD, "/", 2);
-  writeFile(SD, "/hello.txt", "Hello ");
-  appendFile(SD, "/hello.txt", "World!\n");
-  readFile(SD, "/hello.txt");
-  deleteFile(SD, "/foo.txt");
-  renameFile(SD, "/hello.txt", "/foo.txt");
-  readFile(SD, "/foo.txt");
-  testFileIO(SD, "/test.txt");
   Serial.printf("Total space: %lluMB\n", SD.totalBytes() / (1024 * 1024));
   Serial.printf("Used space: %lluMB\n", SD.usedBytes() / (1024 * 1024));
+  Serial.println("SD-Card Initializing end...");
+  Serial.println();
+
+  /*********** Initializing Accel Sensor **************/
+  Serial.println("ADXL345 Initializing start...");
+  if(!myAcc.init()){
+    Serial.println("ADXL345 not connected!");
+  }
+  myAcc.setDataRate(ADXL345_DATA_RATE_1600);
+  delay(100);
+  Serial.println(myAcc.getDataRateAsString());
+  myAcc.setRange(ADXL345_RANGE_4G);
+  Serial.print("  /  g-Range: ");
+  Serial.println(myAcc.getRangeAsString());
+  Serial.println("ADXL345 Initializing end...");
+  Serial.println();
 }
 
 /*************************************************************************************************/
@@ -295,4 +329,28 @@ Function: loop()
 return: void
 **************************************************************************************************/
 /*************************************************************************************************/
-void loop() {}
+void loop() 
+{
+  xyzFloat raw;
+  xyzFloat g;
+  myAcc.getRawValues(&raw);
+  myAcc.getGValues(&g);
+
+  Serial.print("Raw-x = ");
+  Serial.print(raw.x);
+  Serial.print("  |  Raw-y = ");
+  Serial.print(raw.y);
+  Serial.print("  |  Raw-z = ");
+  Serial.println(raw.z);
+
+  Serial.print("g-x   = ");
+  Serial.print(g.x);
+  Serial.print("  |  g-y   = ");
+  Serial.print(g.y);
+  Serial.print("  |  g-z   = ");
+  Serial.println(g.z);
+
+  Serial.println();
+
+  delay(100);
+}
