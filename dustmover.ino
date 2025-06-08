@@ -1,3 +1,6 @@
+#include <stdio.h>
+#include <string.h>
+
 /* include's for SD-Card */
 #include "FS.h"
 #include "SD.h"
@@ -9,7 +12,8 @@
 /*****************************************************************************************/
 /*                                    GENERAL DEFINE                                     */
 /*****************************************************************************************/
-
+#define TRUE  1
+#define FALSE 0
 /*****************************************************************************************/
 /*                                    PROJECT DEFINE                                     */
 /*****************************************************************************************/
@@ -29,6 +33,98 @@
 /*                                      VARIABLES                                        */
 /*****************************************************************************************/
 ADXL345_WE myAcc = ADXL345_WE(ADXL345_I2CADDR);
+
+static volatile uint8_t FirstRun = FALSE;
+static volatile uint32_t LoopCounter = 0;
+
+void replaceWord(char* str, char* oldWord, char* newWord)
+{
+    char *pos, temp[1000];
+    int index = 0;
+    int owlen;
+
+    owlen = strlen(oldWord);
+
+    // Repeat This loop until all occurrences are replaced.
+
+    while ((pos = strstr(str, oldWord)) != NULL) {
+        // Bakup current line
+        strcpy(temp, str);
+
+        // Index of current found word
+        index = pos - str;
+
+        // Terminate str after word found index
+        str[index] = '\0';
+
+        // Concatenate str with new word
+        strcat(str, newWord);
+
+        // Concatenate str with remaining words after
+        // oldword found index.
+        strcat(str, temp + index + owlen);
+    }
+}
+
+// Reverses a string 'str' of length 'len' 
+void reverse(char* str, int len) 
+{ 
+    int i = 0, j = len - 1, temp; 
+    while (i < j) { 
+        temp = str[i]; 
+        str[i] = str[j]; 
+        str[j] = temp; 
+        i++; 
+        j--; 
+    } 
+} 
+
+// Converts a given integer x to string str[]. 
+// d is the number of digits required in the output. 
+// If d is more than the number of digits in x, 
+// then 0s are added at the beginning. 
+int intToStr(int x, char str[], int d) 
+{ 
+    int i = 0; 
+    while (x) { 
+        str[i++] = (x % 10) + '0'; 
+        x = x / 10; 
+    } 
+
+    // If number of digits required is more, then 
+    // add 0s at the beginning 
+    while (i < d) 
+        str[i++] = '0'; 
+
+    reverse(str, i); 
+    str[i] = '\0'; 
+    return i; 
+} 
+
+// Converts a floating-point/double number to a string. 
+void ftoa(float n, char* res, int afterpoint) 
+{ 
+    // Extract integer part 
+    int ipart = (int)n; 
+
+    // Extract floating part 
+    float fpart = n - (float)ipart; 
+
+    // convert integer part to string 
+    int i = intToStr(ipart, res, 0); 
+
+    // check for display option after point 
+    if (afterpoint != 0) { 
+        res[i] = '.'; // add dot 
+
+        // Get the value of fraction part upto given no. 
+        // of points after dot. The third parameter 
+        // is needed to handle cases like 233.007 
+        fpart = fpart * pow(10, afterpoint); 
+
+        intToStr((int)fpart, res + i + 1, afterpoint); 
+    } 
+} 
 
 
 /*************************************************************************************************/
@@ -164,7 +260,7 @@ return: void
 **************************************************************************************************/
 /*************************************************************************************************/
 void appendFile(fs::FS &fs, const char *path, const char *message) {
-  Serial.printf("Appending to file: %s\n", path);
+  // Serial.printf("Appending to file: %s\n", path);
 
   File file = fs.open(path, FILE_APPEND);
   if (!file) {
@@ -172,11 +268,38 @@ void appendFile(fs::FS &fs, const char *path, const char *message) {
     return;
   }
   if (file.print(message)) {
-    Serial.println("Message appended");
-  } else {
-    Serial.println("Append failed");
-  }
+     //Serial.println("Message appended");
+   } else {
+     Serial.println("Append failed");
+   }
   file.close();
+}
+
+/*************************************************************************************************/
+/**************************************************************************************************
+Function: openFile()
+Argument: fs::FS &fs ; file system handle
+          const char *path ; path to file
+return: void
+**************************************************************************************************/
+/*************************************************************************************************/
+uint8_t openFile(fs::FS &fs, const char *path)
+{
+  uint8_t return_val = FALSE;
+
+  // Serial.printf("open file: %s\n", path);
+
+  File file = fs.open(path, FILE_APPEND);
+  if (!file) {
+    Serial.println("open file failed");
+  }
+  else
+  {
+    return_val = TRUE;
+  }
+  
+  file.close();
+  return return_val;
 }
 
 /*************************************************************************************************/
@@ -336,21 +459,77 @@ void loop()
   myAcc.getRawValues(&raw);
   myAcc.getGValues(&g);
 
-  Serial.print("Raw-x = ");
-  Serial.print(raw.x);
-  Serial.print("  |  Raw-y = ");
-  Serial.print(raw.y);
-  Serial.print("  |  Raw-z = ");
-  Serial.println(raw.z);
+  char stri_raw_x[6];
+  char stri_raw_y[6];
+  char stri_raw_z[6];
+  char stri_g_x[6];
+  char stri_g_y[6];
+  char stri_g_z[6];
+  char stri_loopcounter[8];
 
-  Serial.print("g-x   = ");
-  Serial.print(g.x);
-  Serial.print("  |  g-y   = ");
-  Serial.print(g.y);
-  Serial.print("  |  g-z   = ");
-  Serial.println(g.z);
+  memset(&stri_raw_x[0],0x00,6);
+  memset(&stri_raw_y[0],0x00,6);
+  memset(&stri_raw_z[0],0x00,6);
+  memset(&stri_g_x[0],0x00,6);
+  memset(&stri_g_y[0],0x00,6);
+  memset(&stri_g_z[0],0x00,6);
 
-  Serial.println();
+  intToStr(LoopCounter, stri_loopcounter, 4);
+  intToStr(raw.x, stri_raw_x, 0);
+  intToStr(raw.y, stri_raw_y, 0);
+  intToStr(raw.z, stri_raw_z, 0);
+  ftoa(g.x, stri_g_x,2);
+  ftoa(g.y, stri_g_y,2);
+  ftoa(g.z, stri_g_z,2);
+  
+  replaceWord(stri_raw_x, ".","0,");
+  replaceWord(stri_raw_y, ".","0,");
+  replaceWord(stri_raw_z, ".","0,");
+  replaceWord(stri_g_x, ".","0,");
+  replaceWord(stri_g_y, ".","0,");
+  replaceWord(stri_g_z, ".","0,");
 
+  if(FirstRun == FALSE)
+  {
+    writeFile(SD, "/logging.txt", "Start...\n");
+    LoopCounter = 0;
+    FirstRun = TRUE;
+  } 
+
+  // Serial.print("Raw-x = ");
+  // Serial.print(raw.x);
+  // Serial.print("  |  Raw-y = ");
+  // Serial.print(raw.y);
+  // Serial.print("  |  Raw-z = ");
+  // Serial.println(raw.z);
+
+  // Serial.print("g-x   = ");
+  // Serial.print(g.x);
+  // Serial.print("  |  g-y   = ");
+  // Serial.print(g.y);
+  // Serial.print("  |  g-z   = ");
+  // Serial.println(g.z);
+
+  // Serial.println("Log..");
+  /* check for open file */
+  if(openFile(SD, "/logging.txt") == TRUE)
+  {
+    appendFile(SD, "/logging.txt", &stri_loopcounter[0]);
+    appendFile(SD, "/logging.txt", "; ");
+    appendFile(SD, "/logging.txt", &stri_raw_x[0]);
+    appendFile(SD, "/logging.txt", "; ");
+    appendFile(SD, "/logging.txt", &stri_raw_y[0]);
+    appendFile(SD, "/logging.txt", "; ");
+    appendFile(SD, "/logging.txt", &stri_raw_z[0]);
+    appendFile(SD, "/logging.txt", "; ");
+    appendFile(SD, "/logging.txt", &stri_g_x[0]);
+    appendFile(SD, "/logging.txt", "; ");
+    appendFile(SD, "/logging.txt", &stri_g_y[0]);
+    appendFile(SD, "/logging.txt", "; ");
+    appendFile(SD, "/logging.txt", &stri_g_z[0]);
+    appendFile(SD, "/logging.txt", "\n");
+  }
+
+  LoopCounter++;
   delay(100);
 }
