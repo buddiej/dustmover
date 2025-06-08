@@ -1,9 +1,9 @@
 # dustmover
-sensor sytem for detection of position and accelaration with data logging on SD-Card
+sensor sytem for detection of position and acceleration with data logging on SD-Card
 
 *Usage of*
 - SD-Card (for logging)
-- ADXL 345 accelration sensor 
+- ADXL 345 acceleration sensor 
 
 # SD-Card Interface (ESP32 used) (VDD 3.3V)
 
