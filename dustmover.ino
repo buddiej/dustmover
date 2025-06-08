@@ -1,16 +1,20 @@
+/* include's for SD-Card */
 #include "FS.h"
 #include "SD.h"
 #include "SPI.h"
 
-/*
-Uncomment and set up if you want to use custom pins for the SPI communication
-#define REASSIGN_PINS
-int sck = -1;
-int miso = -1;
-int mosi = -1;
-int cs = -1;
-*/
 
+
+
+/*************************************************************************************************/
+/**************************************************************************************************
+Function: listDir()
+Argument: fs::FS &fs ; file system handle
+          const char *dirname ; pointer to directory
+          uint8_t levels ; levels to display
+return: void
+**************************************************************************************************/
+/*************************************************************************************************/
 void listDir(fs::FS &fs, const char *dirname, uint8_t levels) {
   Serial.printf("Listing directory: %s\n", dirname);
 
@@ -42,6 +46,14 @@ void listDir(fs::FS &fs, const char *dirname, uint8_t levels) {
   }
 }
 
+/*************************************************************************************************/
+/**************************************************************************************************
+Function: createDir()
+Argument: fs::FS &fs ; file system handle
+          const char *path ; path to file
+return: void
+**************************************************************************************************/
+/*************************************************************************************************/
 void createDir(fs::FS &fs, const char *path) {
   Serial.printf("Creating Dir: %s\n", path);
   if (fs.mkdir(path)) {
@@ -51,6 +63,14 @@ void createDir(fs::FS &fs, const char *path) {
   }
 }
 
+/*************************************************************************************************/
+/**************************************************************************************************
+Function: removeDir()
+Argument: fs::FS &fs ; file system handle
+          const char *path ; path to file
+return: void
+**************************************************************************************************/
+/*************************************************************************************************/
 void removeDir(fs::FS &fs, const char *path) {
   Serial.printf("Removing Dir: %s\n", path);
   if (fs.rmdir(path)) {
@@ -60,6 +80,14 @@ void removeDir(fs::FS &fs, const char *path) {
   }
 }
 
+/*************************************************************************************************/
+/**************************************************************************************************
+Function: readFile()
+Argument: fs::FS &fs ; file system handle
+          const char *path ; path to file
+return: void
+**************************************************************************************************/
+/*************************************************************************************************/
 void readFile(fs::FS &fs, const char *path) {
   Serial.printf("Reading file: %s\n", path);
 
@@ -76,6 +104,15 @@ void readFile(fs::FS &fs, const char *path) {
   file.close();
 }
 
+/*************************************************************************************************/
+/**************************************************************************************************
+Function: writeFile()
+Argument: fs::FS &fs ; file system handle
+          const char *path ; path to file
+          const char *message ; pointer to message
+return: void
+**************************************************************************************************/
+/*************************************************************************************************/
 void writeFile(fs::FS &fs, const char *path, const char *message) {
   Serial.printf("Writing file: %s\n", path);
 
@@ -92,6 +129,15 @@ void writeFile(fs::FS &fs, const char *path, const char *message) {
   file.close();
 }
 
+/*************************************************************************************************/
+/**************************************************************************************************
+Function: appendFile()
+Argument: fs::FS &fs ; file system handle
+          const char *path ; path to file
+          const char *message ; pointer to message
+return: void
+**************************************************************************************************/
+/*************************************************************************************************/
 void appendFile(fs::FS &fs, const char *path, const char *message) {
   Serial.printf("Appending to file: %s\n", path);
 
@@ -108,6 +154,15 @@ void appendFile(fs::FS &fs, const char *path, const char *message) {
   file.close();
 }
 
+/*************************************************************************************************/
+/**************************************************************************************************
+Function: renameFile()
+Argument: fs::FS &fs ; file system handle
+          const char *path1 ; path to source
+          const char *path2 ; path to destination
+return: void
+**************************************************************************************************/
+/*************************************************************************************************/
 void renameFile(fs::FS &fs, const char *path1, const char *path2) {
   Serial.printf("Renaming file %s to %s\n", path1, path2);
   if (fs.rename(path1, path2)) {
@@ -117,6 +172,14 @@ void renameFile(fs::FS &fs, const char *path1, const char *path2) {
   }
 }
 
+/*************************************************************************************************/
+/**************************************************************************************************
+Function: deleteFile()
+Argument: fs::FS &fs ; file system handle
+          const char *path ; path to file
+return: void
+**************************************************************************************************/
+/*************************************************************************************************/
 void deleteFile(fs::FS &fs, const char *path) {
   Serial.printf("Deleting file: %s\n", path);
   if (fs.remove(path)) {
@@ -126,6 +189,14 @@ void deleteFile(fs::FS &fs, const char *path) {
   }
 }
 
+/*************************************************************************************************/
+/**************************************************************************************************
+Function: testFileIO()
+Argument: fs::FS &fs ; file system handle
+          const char *path ; path to payload
+return: void
+**************************************************************************************************/
+/*************************************************************************************************/
 void testFileIO(fs::FS &fs, const char *path) {
   File file = fs.open(path);
   static uint8_t buf[512];
@@ -167,15 +238,17 @@ void testFileIO(fs::FS &fs, const char *path) {
   file.close();
 }
 
+/*************************************************************************************************/
+/**************************************************************************************************
+Function: setup()
+return: void
+**************************************************************************************************/
+/*************************************************************************************************/
 void setup() {
   Serial.begin(115200);
 
-#ifdef REASSIGN_PINS
-  SPI.begin(sck, miso, mosi, cs);
-  if (!SD.begin(cs)) {
-#else
   if (!SD.begin()) {
-#endif
+
     Serial.println("Card Mount Failed");
     return;
   }
@@ -216,4 +289,10 @@ void setup() {
   Serial.printf("Used space: %lluMB\n", SD.usedBytes() / (1024 * 1024));
 }
 
+/*************************************************************************************************/
+/**************************************************************************************************
+Function: loop()
+return: void
+**************************************************************************************************/
+/*************************************************************************************************/
 void loop() {}
