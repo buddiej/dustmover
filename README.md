@@ -64,5 +64,6 @@ Examples:
     ADXL343_RANGE_2G      2g
 */ 
 
+# LED (build-in LED) GPIO16
 
 
