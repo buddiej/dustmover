@@ -7,8 +7,8 @@
 #include "SD.h"
 #include "SPI.h"
 /* include's for accel sensor */
-#include<Wire.h>
-#include<ADXL345_WE.h>
+#include <Wire.h>
+#include <ADXL345_WE.h>
 
 /*****************************************************************************************/
 /*                                    GENERAL DEFINE                                     */
@@ -19,6 +19,7 @@
 /*                                    PROJECT DEFINE                                     */
 /*****************************************************************************************/
 #define ADXL345_I2CADDR 0x53 // 0x1D if SDO = HIGH
+#define ADLX345_FIFO_BUFFER_SIZE 32
 #define LED_PIN 16
 
 /*****************************************************************************************/
@@ -35,6 +36,9 @@
 /*                                      VARIABLES                                        */
 /*****************************************************************************************/
 ADXL345_WE myAcc = ADXL345_WE(ADXL345_I2CADDR);
+const int int2Pin = 2;
+
+static volatile bool int2event = FALSE;
 
 static volatile uint8_t FirstRun = FALSE;
 static volatile uint32_t LoopCounter = 0;
@@ -48,6 +52,17 @@ static char stri_g_y[8] = {'\0','\0','\0','\0','\0','\0','\0','\0'};
 static char stri_g_z[8] = {'\0','\0','\0','\0','\0','\0','\0','\0'};
 static char stri_loopcounter[8] = {'\0','\0','\0','\0','\0','\0','\0','\0'};
 
+
+/*************************************************************************************************/
+/**************************************************************************************************
+Function: floatToString()
+Argument: float f ; floating point value
+          char* S ; pointer to buffer
+          size_t n ; size of char buffer
+          int digitsAfterDP ; digits afer the commata
+return: char *
+**************************************************************************************************/
+/*************************************************************************************************/
 char* floatToString(float f, char* S, size_t n, int digitsAfterDP) {
   if (digitsAfterDP == 0)
     snprintf(S, n, "%d", (int) (f + (f < 0 ? -0.5 : 0.5)));
@@ -76,6 +91,15 @@ char* floatToString(float f, char* S, size_t n, int digitsAfterDP) {
   return(S);
 }
 
+/*************************************************************************************************/
+/**************************************************************************************************
+Function: replaceWord()
+Argument: char* str ; pointer to string
+          char* oldWord ; pointer to old word
+          char* newWord ; levels to new word
+return: void
+**************************************************************************************************/
+/*************************************************************************************************/
 void replaceWord(char* str, char* oldWord, char* newWord)
 {
     char *pos, temp[1000];
@@ -105,7 +129,15 @@ void replaceWord(char* str, char* oldWord, char* newWord)
     }
 }
 
-// Reverses a string 'str' of length 'len' 
+/*************************************************************************************************/
+/**************************************************************************************************
+Function: reverse()
+  Reverses a string 'str' of length 'len' 
+Argument: char* str ; pointer to string
+          int len ; length of string
+return: void
+**************************************************************************************************/
+/*************************************************************************************************/
 void reverse(char* str, int len) 
 { 
     int i = 0, j = len - 1, temp; 
@@ -118,10 +150,19 @@ void reverse(char* str, int len)
     } 
 } 
 
-// Converts a given integer x to string str[]. 
-// d is the number of digits required in the output. 
-// If d is more than the number of digits in x, 
-// then 0s are added at the beginning. 
+/*************************************************************************************************/
+/**************************************************************************************************
+Function: intToStr()
+ Converts a given integer x to string str[]. 
+ d is the number of digits required in the output. 
+ If d is more than the number of digits in x, 
+ then 0s are added at the beginning. 
+Argument: int x ; integer to convert
+          char str[] ; pointer to output string
+          int d ; d is the number of digits required in the output
+return: int
+**************************************************************************************************/
+/*************************************************************************************************/
 int intToStr(int x, char str[], int d) 
 { 
     int i = 0; 
@@ -139,8 +180,6 @@ int intToStr(int x, char str[], int d)
     str[i] = '\0'; 
     return i; 
 } 
-
-
 
 /*************************************************************************************************/
 /**************************************************************************************************
@@ -417,6 +456,8 @@ void setup() {
   /* build in LED */
   pinMode(LED_PIN, OUTPUT);
 
+  pinMode(int2Pin, INPUT);
+
 
   /************* Initializing SD-Card *****************/
   Serial.println("SD-Card Initializing start...");
@@ -454,12 +495,63 @@ void setup() {
   if(!myAcc.init()){
     Serial.println("ADXL345 not connected!");
   }
-  myAcc.setDataRate(ADXL345_DATA_RATE_1600);
+
+  /* set correction factors */
+  myAcc.setCorrFactors(-255.0, 263.0, -252.0, 267.0, -257.0, 246);
+  
+/* In this next step the offset for angles is corrected to get quite precise corrected 
+    angles x and y up to ~60°. The additional offsetCorrection is only for corrected 
+    angle measurements, not for pitch and roll. The procedure just ensures to start at 0°.
+*/
+  Serial.println("Position your ADXL345 flat and don't move it");
+  delay(2000);
+  myAcc.measureAngleOffsets();
+
+  myAcc.setDataRate(ADXL345_DATA_RATE_100);
   delay(100);
   Serial.println(myAcc.getDataRateAsString());
-  myAcc.setRange(ADXL345_RANGE_4G);
+  myAcc.setRange(ADXL345_RANGE_2G);
   Serial.print("  /  g-Range: ");
   Serial.println(myAcc.getRangeAsString());
+
+  attachInterrupt(digitalPinToInterrupt(int2Pin), event2ISR, RISING);
+
+  
+/* You can choose the following interrupts:
+     Variable name:             Triggered, if:
+    ADXL345_OVERRUN      -   new data replaces unread data
+    ADXL345_WATERMARK    -   the number of samples in FIFO equals the number defined in FIFO_CTL
+    ADXL345_FREEFALL     -   acceleration values of all axes are below the threshold defined in THRESH_FF 
+    ADXL345_INACTIVITY   -   acc. value of all included axes are < THRESH_INACT for period > TIME_INACT
+    ADXL345_ACTIVITY     -   acc. value of included axes are > THRESH_ACT
+    ADXL345_DOUBLE_TAP   -   double tap detected on one incl. axis and various defined conditions are met
+    ADXL345_SINGLE_TAP   -   single tap detected on one incl. axis and various defined conditions are met
+    ADXL345_DATA_READY   -   new data available
+
+    Assign the interrupts to INT1 (INT_PIN_1) or INT2 (INT_PIN_2). Data ready, watermark and overrun are 
+    always enabled. You can only change the assignment of these which is INT1 by default.
+
+    You can delete interrupts with deleteInterrupt(type);
+*/ 
+  myAcc.setInterrupt(ADXL345_WATERMARK, INT_PIN_1); // Interrupt when FIFO is full
+  
+/* The following two FIFO parameters need to be set:
+    1. Trigger Bit: not relevant for this FIFO mode.
+    2. FIFO samples (max 32). Defines the size of the FIFO. One sample is an x,y,z triple.
+*/
+  myAcc.setFifoParameters(ADXL345_TRIGGER_INT_1, ADLX345_FIFO_BUFFER_SIZE);
+
+/* You can choose the following FIFO modes:
+    ADXL345_FIFO     -  you choose the start, ends when FIFO is full (at defined limit)
+    ADXL345_STREAM   -  FIFO always filled with new data, old data replaced if FIFO is full; you choose the stop
+    ADXL345_TRIGGER  -  FIFO always filled up to 32 samples; when the trigger event occurs only defined number of samples
+                        is kept in the FIFO and further samples are taken after the event until FIFO is full again. 
+    ADXL345_BYPASS   -  no FIFO
+*/   
+  myAcc.setFifoMode(ADXL345_TRIGGER); 
+  myAcc.readAndClearInterrupts();
+  
+  delay(100);
   Serial.println("ADXL345 Initializing end...");
   Serial.println();
 }
@@ -474,52 +566,13 @@ void loop()
 {
   xyzFloat raw;
   xyzFloat g;
-  myAcc.getRawValues(&raw);
-  myAcc.getGValues(&g);
+  xyzFloat angle;
+  xyzFloat corrAngles;
+  float pitch;
+  float roll;
+  byte intType;
 
-  /* clear buffer's first */
-  memset(&OutBuffer[0],'/0',64);
-  memset(&stri_loopcounter[0],'/0',8);
-  memset(&stri_raw_x[0],'/0',8);
-  memset(&stri_raw_y[0],'/0',8);
-  memset(&stri_raw_z[0],'/0',8);
-  memset(&stri_g_x[0],'/0',8);
-  memset(&stri_g_y[0],'/0',8);
-  memset(&stri_g_z[0],'/0',8);
-  
-  /* Add leading zeros to the counter */
-  intToStr(LoopCounter, stri_loopcounter, 7);
-
-  /* convert float to string with 2 decimal after comma values */
-  floatToString(raw.x, stri_raw_x, 8, 2);
-  floatToString(raw.y, stri_raw_y, 8, 2);
-  floatToString(raw.z, stri_raw_z, 8, 2);
-  floatToString(g.x, stri_g_x, 8, 2);
-  floatToString(g.y, stri_g_y, 8, 2);
-  floatToString(g.z, stri_g_z, 8, 2);
-
-  /* fill buffer with the counter, raw values and g-values */
-  strcpy(OutBuffer, stri_loopcounter);
-  strcat(OutBuffer, "; ");
-  strcat(OutBuffer, stri_raw_x);
-  strcat(OutBuffer, "; ");
-  strcat(OutBuffer, stri_raw_y);
-  strcat(OutBuffer, "; ");
-  strcat(OutBuffer, stri_raw_z);
-  strcat(OutBuffer, "; ");
-  strcat(OutBuffer, stri_g_x);
-  strcat(OutBuffer, "; ");
-  strcat(OutBuffer, stri_g_y);
-  strcat(OutBuffer, "; ");
-  strcat(OutBuffer, stri_g_z);
-  strcat(OutBuffer, "\n");
-
-  /* replacement of dots to commata */
-  replaceWord(OutBuffer, ".",",");
-
-  //printf("%s", &OutBuffer[0]);
-
-  /* check for first run */
+   /* check for first run */
   if(FirstRun == FALSE)
   {
     writeFile(SD, "/logging.txt", "count; raw-x; raw-y; raw-z; g-x; g-y; g-z;\n");
@@ -528,30 +581,199 @@ void loop()
     digitalWrite(LED_PIN, TRUE);
     LoopCounter = 0;
     FirstRun = TRUE;
+
+    myAcc.readAndClearInterrupts();
+    myAcc.setMeasureMode(true); // this is the actual start
+
   } 
 
-  // Serial.print("Raw-x = ");
-  // Serial.print(raw.x);
-  // Serial.print("  |  Raw-y = ");
-  // Serial.print(raw.y);
-  // Serial.print("  |  Raw-z = ");
-  // Serial.println(raw.z);
+  while(!int2event){}
+  myAcc.setMeasureMode(false); // this is the actual stop
+  int2event = FALSE;
+  //Serial.println("INT2 triggered");
 
-  // Serial.print("g-x   = ");
-  // Serial.print(g.x);
-  // Serial.print("  |  g-y   = ");
-  // Serial.print(g.y);
-  // Serial.print("  |  g-z   = ");
-  // Serial.println(g.z);
-
-  
-  /* check for open file */
-  if(openFile(SD, "/logging.txt") == TRUE)
+  intType = myAcc.readAndClearInterrupts();
+  if (myAcc.checkInterrupt(intType, ADXL345_OVERRUN))
   {
-    /* add data to the file */
-    appendFile(SD, "/logging.txt", OutBuffer);
+    Serial.println("INT2 OVERRUN confirmed");
+  }
+  else if (myAcc.checkInterrupt(intType, ADXL345_WATERMARK))
+  {
+    Serial.println("INT2 WATERMARK confirmed");
+  }
+  else if(myAcc.checkInterrupt(intType, ADXL345_FREEFALL))
+  {
+    Serial.println("INT2 FREEFALL confirmed");
+  }
+  else if (myAcc.checkInterrupt(intType, ADXL345_INACTIVITY))
+  {
+    Serial.println("INT2 INACTIVITY confirmed");
+  }
+  else if (myAcc.checkInterrupt(intType, ADXL345_ACTIVITY))
+  {
+    Serial.println("INT2 ACTIVITY confirmed");
+  }
+  else if (myAcc.checkInterrupt(intType, ADXL345_DOUBLE_TAP))
+  {
+    Serial.println("INT2 DOUBLE_TAP confirmed");
+  }  
+  else if (myAcc.checkInterrupt(intType, ADXL345_SINGLE_TAP))
+  {
+    Serial.println("INT2 SIGLE_TAP confirmed");
+  } 
+  else if (myAcc.checkInterrupt(intType, ADXL345_DATA_READY))
+  {
+    Serial.println("INT2 DATA_READY confirmed");
+  }
+  else
+  {
+    Serial.print("INT2 UNKNOWN confirmed: ");
+    Serial.println(intType);
   }
 
-  LoopCounter++;
-  delay(100);
+  //myAcc.setMeasureMode(FALSE); // this is the actual stop
+
+  // for(int i=0; i < ADLX345_FIFO_BUFFER_SIZE; i++)
+  // { 
+  //   myAcc.getRawValues(&raw);
+  // }
+
+  //myAcc.readAndClearInterrupts();
+  //myAcc.setMeasureMode(true); // this is the actual start   
+
+  //delay(100);
+  
+  // // myAcc.readAndClearInterrupts();
+  // // myAcc.setMeasureMode(true); // this is the actual start
+  
+  for(int i=0; i < ADLX345_FIFO_BUFFER_SIZE; i++){ 
+    myAcc.getRawValues(&raw);
+    myAcc.getGValues(&g);
+    myAcc.getAngles(&angle);
+    myAcc.getCorrAngles(&corrAngles);
+
+       /* clear buffer's first */
+    memset(&OutBuffer[0],'/0',64);
+    memset(&stri_loopcounter[0],'/0',8);
+    memset(&stri_raw_x[0],'/0',8);
+    memset(&stri_raw_y[0],'/0',8);
+    memset(&stri_raw_z[0],'/0',8);
+    memset(&stri_g_x[0],'/0',8);
+    memset(&stri_g_y[0],'/0',8);
+    memset(&stri_g_z[0],'/0',8);
+    
+    /* Add leading zeros to the counter */
+    intToStr(LoopCounter, stri_loopcounter, 7);
+
+    /* convert float to string with 2 decimal after comma values */
+    floatToString(raw.x, stri_raw_x, 8, 2);
+    floatToString(raw.y, stri_raw_y, 8, 2);
+    floatToString(raw.z, stri_raw_z, 8, 2);
+    floatToString(g.x, stri_g_x, 8, 2);
+    floatToString(g.y, stri_g_y, 8, 2);
+    floatToString(g.z, stri_g_z, 8, 2);
+
+    /* fill buffer with the counter, raw values and g-values */
+    strcpy(OutBuffer, stri_loopcounter);
+    strcat(OutBuffer, "; ");
+    strcat(OutBuffer, stri_raw_x);
+    strcat(OutBuffer, "; ");
+    strcat(OutBuffer, stri_raw_y);
+    strcat(OutBuffer, "; ");
+    strcat(OutBuffer, stri_raw_z);
+    strcat(OutBuffer, "; ");
+    strcat(OutBuffer, stri_g_x);
+    strcat(OutBuffer, "; ");
+    strcat(OutBuffer, stri_g_y);
+    strcat(OutBuffer, "; ");
+    strcat(OutBuffer, stri_g_z);
+    strcat(OutBuffer, "\n");
+
+    /* replacement of dots to commata */
+    replaceWord(OutBuffer, ".",",");
+
+    
+    printf("%s", &OutBuffer[0]);
+
+
+
+    // Serial.print("Raw-x = ");
+    // Serial.print(raw.x);
+    // Serial.print("  |  Raw-y = ");
+    // Serial.print(raw.y);
+    // Serial.print("  |  Raw-z = ");
+    // Serial.println(raw.z);
+
+    // Serial.print("g-x   = ");
+    // Serial.print(g.x);
+    // Serial.print("  |  g-y   = ");
+    // Serial.print(g.y);
+    // Serial.print("  |  g-z   = ");
+    // Serial.println(g.z);
+
+    // /* Angles use the corrected raws. Angles are simply calculated by
+    // angle = arcsin(g Value) */
+    // Serial.print("Angle x  = ");
+    // Serial.print(angle.x);
+    // Serial.print("  |  Angle y  = ");
+    // Serial.print(angle.y);
+    // Serial.print("  |  Angle z  = ");
+    // Serial.println(angle.z);
+
+    // Serial.print("Angle x = ");
+    // Serial.print(corrAngles.x);
+    // Serial.print("  |  Angle y = ");
+    // Serial.print(corrAngles.y);
+    // Serial.print("  |  Angle z = ");
+    // Serial.println(corrAngles.z);
+
+    // pitch = myAcc.getPitch();
+    // roll  = myAcc.getRoll();
+    
+    // Serial.print("Pitch   = "); 
+    // Serial.print(pitch); 
+    // Serial.print("  |  Roll    = "); 
+    // Serial.println(roll); 
+    // Serial.println();
+
+    // Serial.print("Orientation of the module: ");
+    // Serial.println(myAcc.getOrientationAsString());
+    // Serial.println();
+      
+    /* check for open file */
+    if(openFile(SD, "/logging.txt") == TRUE)
+    {
+      /* add data to the file */
+      appendFile(SD, "/logging.txt", OutBuffer);
+    }
+      
+    LoopCounter++; 
+    // //   /* check if FIFO is empty */
+    // //   // if(myAcc.getFifoStatus() == 0){
+    // //   //   break;
+    // //   // }
+    myAcc.resetTrigger();
+    myAcc.readAndClearInterrupts();
+    myAcc.setMeasureMode(true); // this is the actual start
+
+  } /* end loop */
+
+  // myAcc.readAndClearInterrupts();
+  // myAcc.setMeasureMode(true); // this is the actual start
+
+  // Serial.println("For another series of measurements, enter any key and send");
+  
+  // while(!(Serial.available())){}
+  // Serial.read();
+  // Serial.println();
+
+  //myAcc.readAndClearInterrupts();
+  //myAcc.setMeasureMode(true); // this is the actual start
+  // delay(3000);
+
+
+}
+
+void event2ISR() {
+  int2event = TRUE;
 }
