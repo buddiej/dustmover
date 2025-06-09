@@ -37,6 +37,43 @@ ADXL345_WE myAcc = ADXL345_WE(ADXL345_I2CADDR);
 static volatile uint8_t FirstRun = FALSE;
 static volatile uint32_t LoopCounter = 0;
 
+static char OutBuffer[64] = {'\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0'};
+static char stri_raw_x[8] = {'\0','\0','\0','\0','\0','\0','\0','\0'};
+static char stri_raw_y[8] = {'\0','\0','\0','\0','\0','\0','\0','\0'};
+static char stri_raw_z[8] = {'\0','\0','\0','\0','\0','\0','\0','\0'};
+static char stri_g_x[8] = {'\0','\0','\0','\0','\0','\0','\0','\0'};
+static char stri_g_y[8] = {'\0','\0','\0','\0','\0','\0','\0','\0'};
+static char stri_g_z[8] = {'\0','\0','\0','\0','\0','\0','\0','\0'};
+static char stri_loopcounter[8] = {'\0','\0','\0','\0','\0','\0','\0','\0'};
+
+char* floatToString(float f, char* S, size_t n, int digitsAfterDP) {
+  if (digitsAfterDP == 0)
+    snprintf(S, n, "%d", (int) (f + (f < 0 ? -0.5 : 0.5)));
+  else if (digitsAfterDP < 0) {
+    int i;
+    for (i = 0; i < -digitsAfterDP && abs(f) >= 10; i++) f /= 10;
+    char fmt[10]; // "%d%02d"
+    sprintf(fmt, "%%d%%0%dd", i);
+    snprintf(S, n, fmt, (int) (f + (f < 0 ? -0.5 : 0.5)), 0);
+  } else {
+    int M = (int) f;
+    f = abs(f - (float) M);
+    float g = 1;
+    for (int i = digitsAfterDP; i > 0; i--) g *= 10;
+    f *= g;
+    f += 0.5;
+    if (f >= g) {
+      f -= g;
+      M += 1;
+    }
+    int E = (int) f;
+    char fmt[10]; // "%d.%05d"
+    sprintf(fmt, "%%d.%%0%dd", digitsAfterDP);
+    snprintf(S, n, fmt, M, E);
+  }
+  return(S);
+}
+
 void replaceWord(char* str, char* oldWord, char* newWord)
 {
     char *pos, temp[1000];
@@ -101,30 +138,6 @@ int intToStr(int x, char str[], int d)
     return i; 
 } 
 
-// Converts a floating-point/double number to a string. 
-void ftoa(float n, char* res, int afterpoint) 
-{ 
-    // Extract integer part 
-    int ipart = (int)n; 
-
-    // Extract floating part 
-    float fpart = n - (float)ipart; 
-
-    // convert integer part to string 
-    int i = intToStr(ipart, res, 0); 
-
-    // check for display option after point 
-    if (afterpoint != 0) { 
-        res[i] = '.'; // add dot 
-
-        // Get the value of fraction part upto given no. 
-        // of points after dot. The third parameter 
-        // is needed to handle cases like 233.007 
-        fpart = fpart * pow(10, afterpoint); 
-
-        intToStr((int)fpart, res + i + 1, afterpoint); 
-    } 
-} 
 
 
 /*************************************************************************************************/
@@ -459,39 +472,53 @@ void loop()
   myAcc.getRawValues(&raw);
   myAcc.getGValues(&g);
 
-  char stri_raw_x[6];
-  char stri_raw_y[6];
-  char stri_raw_z[6];
-  char stri_g_x[6];
-  char stri_g_y[6];
-  char stri_g_z[6];
-  char stri_loopcounter[8];
-
-  memset(&stri_raw_x[0],0x00,6);
-  memset(&stri_raw_y[0],0x00,6);
-  memset(&stri_raw_z[0],0x00,6);
-  memset(&stri_g_x[0],0x00,6);
-  memset(&stri_g_y[0],0x00,6);
-  memset(&stri_g_z[0],0x00,6);
-
-  intToStr(LoopCounter, stri_loopcounter, 4);
-  intToStr(raw.x, stri_raw_x, 0);
-  intToStr(raw.y, stri_raw_y, 0);
-  intToStr(raw.z, stri_raw_z, 0);
-  ftoa(g.x, stri_g_x,2);
-  ftoa(g.y, stri_g_y,2);
-  ftoa(g.z, stri_g_z,2);
+  /* clear buffer's first */
+  memset(&OutBuffer[0],'/0',64);
+  memset(&stri_loopcounter[0],'/0',8);
+  memset(&stri_raw_x[0],'/0',8);
+  memset(&stri_raw_y[0],'/0',8);
+  memset(&stri_raw_z[0],'/0',8);
+  memset(&stri_g_x[0],'/0',8);
+  memset(&stri_g_y[0],'/0',8);
+  memset(&stri_g_z[0],'/0',8);
   
-  replaceWord(stri_raw_x, ".","0,");
-  replaceWord(stri_raw_y, ".","0,");
-  replaceWord(stri_raw_z, ".","0,");
-  replaceWord(stri_g_x, ".","0,");
-  replaceWord(stri_g_y, ".","0,");
-  replaceWord(stri_g_z, ".","0,");
+  /* Add leading zeros to the counter */
+  intToStr(LoopCounter, stri_loopcounter, 7);
 
+  /* convert float to string with 2 decimal after comma values */
+  floatToString(raw.x, stri_raw_x, 8, 2);
+  floatToString(raw.y, stri_raw_y, 8, 2);
+  floatToString(raw.z, stri_raw_z, 8, 2);
+  floatToString(g.x, stri_g_x, 8, 2);
+  floatToString(g.y, stri_g_y, 8, 2);
+  floatToString(g.z, stri_g_z, 8, 2);
+
+  /* fill buffer with the counter, raw values and g-values */
+  strcpy(OutBuffer, stri_loopcounter);
+  strcat(OutBuffer, "; ");
+  strcat(OutBuffer, stri_raw_x);
+  strcat(OutBuffer, "; ");
+  strcat(OutBuffer, stri_raw_y);
+  strcat(OutBuffer, "; ");
+  strcat(OutBuffer, stri_raw_z);
+  strcat(OutBuffer, "; ");
+  strcat(OutBuffer, stri_g_x);
+  strcat(OutBuffer, "; ");
+  strcat(OutBuffer, stri_g_y);
+  strcat(OutBuffer, "; ");
+  strcat(OutBuffer, stri_g_z);
+  strcat(OutBuffer, "\n");
+
+  /* replacement of dots to commata */
+  replaceWord(OutBuffer, ".",",");
+
+  //printf("%s", &OutBuffer[0]);
+
+  /* check for first run */
   if(FirstRun == FALSE)
   {
-    writeFile(SD, "/logging.txt", "Start...\n");
+    writeFile(SD, "/logging.txt", "count; raw-x; raw-y; raw-z; g-x; g-y; g-z;\n");
+    Serial.println("Start Logging...");
     LoopCounter = 0;
     FirstRun = TRUE;
   } 
@@ -510,24 +537,12 @@ void loop()
   // Serial.print("  |  g-z   = ");
   // Serial.println(g.z);
 
-  // Serial.println("Log..");
+  
   /* check for open file */
   if(openFile(SD, "/logging.txt") == TRUE)
   {
-    appendFile(SD, "/logging.txt", &stri_loopcounter[0]);
-    appendFile(SD, "/logging.txt", "; ");
-    appendFile(SD, "/logging.txt", &stri_raw_x[0]);
-    appendFile(SD, "/logging.txt", "; ");
-    appendFile(SD, "/logging.txt", &stri_raw_y[0]);
-    appendFile(SD, "/logging.txt", "; ");
-    appendFile(SD, "/logging.txt", &stri_raw_z[0]);
-    appendFile(SD, "/logging.txt", "; ");
-    appendFile(SD, "/logging.txt", &stri_g_x[0]);
-    appendFile(SD, "/logging.txt", "; ");
-    appendFile(SD, "/logging.txt", &stri_g_y[0]);
-    appendFile(SD, "/logging.txt", "; ");
-    appendFile(SD, "/logging.txt", &stri_g_z[0]);
-    appendFile(SD, "/logging.txt", "\n");
+    /* add data to the file */
+    appendFile(SD, "/logging.txt", OutBuffer);
   }
 
   LoopCounter++;
