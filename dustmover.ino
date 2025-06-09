@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include "driver/gpio.h"
 
 /* include's for SD-Card */
 #include "FS.h"
@@ -18,6 +19,7 @@
 /*                                    PROJECT DEFINE                                     */
 /*****************************************************************************************/
 #define ADXL345_I2CADDR 0x53 // 0x1D if SDO = HIGH
+#define LED_PIN 16
 
 /*****************************************************************************************/
 /*                                     TYPEDEF ENUM                                      */
@@ -412,6 +414,9 @@ void setup() {
   /****************** Initializing ********************/
   Serial.begin(115200);
   Wire.begin(); /* Initialize I2C */
+  /* build in LED */
+  pinMode(LED_PIN, OUTPUT);
+
 
   /************* Initializing SD-Card *****************/
   Serial.println("SD-Card Initializing start...");
@@ -519,6 +524,8 @@ void loop()
   {
     writeFile(SD, "/logging.txt", "count; raw-x; raw-y; raw-z; g-x; g-y; g-z;\n");
     Serial.println("Start Logging...");
+    /* build in LED */
+    digitalWrite(LED_PIN, TRUE);
     LoopCounter = 0;
     FirstRun = TRUE;
   } 
