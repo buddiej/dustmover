@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <string.h>
 #include "driver/gpio.h"
-
 /* include's for SD-Card */
 #include "FS.h"
 #include "SD.h"
@@ -21,6 +20,8 @@
 #define ADXL345_I2CADDR 0x53 // 0x1D if SDO = HIGH
 #define ADLX345_FIFO_BUFFER_SIZE 32
 #define LED_PIN 16
+#define STRI_OUT_BUFFER_SIZE 128
+#define STRI_VAL_BUFFER_SIZE 8
 
 /*****************************************************************************************/
 /*                                     TYPEDEF ENUM                                      */
@@ -43,14 +44,24 @@ static volatile bool int2event = FALSE;
 static volatile uint8_t FirstRun = FALSE;
 static volatile uint32_t LoopCounter = 0;
 
-static char OutBuffer[64] = {'\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0'};
-static char stri_raw_x[8] = {'\0','\0','\0','\0','\0','\0','\0','\0'};
-static char stri_raw_y[8] = {'\0','\0','\0','\0','\0','\0','\0','\0'};
-static char stri_raw_z[8] = {'\0','\0','\0','\0','\0','\0','\0','\0'};
-static char stri_g_x[8] = {'\0','\0','\0','\0','\0','\0','\0','\0'};
-static char stri_g_y[8] = {'\0','\0','\0','\0','\0','\0','\0','\0'};
-static char stri_g_z[8] = {'\0','\0','\0','\0','\0','\0','\0','\0'};
-static char stri_loopcounter[8] = {'\0','\0','\0','\0','\0','\0','\0','\0'};
+static char OutBuffer[STRI_OUT_BUFFER_SIZE] = {};
+static char stri_loopcounter[STRI_VAL_BUFFER_SIZE] = {};
+static char stri_raw_x[STRI_VAL_BUFFER_SIZE] = {};
+static char stri_raw_y[STRI_VAL_BUFFER_SIZE] = {};
+static char stri_raw_z[STRI_VAL_BUFFER_SIZE] = {};
+static char stri_g_x[STRI_VAL_BUFFER_SIZE] = {};
+static char stri_g_y[STRI_VAL_BUFFER_SIZE] = {};
+static char stri_g_z[STRI_VAL_BUFFER_SIZE] = {};
+static char stri_angle_x[STRI_VAL_BUFFER_SIZE] = {};
+static char stri_angle_y[STRI_VAL_BUFFER_SIZE] = {};
+static char stri_angle_z[STRI_VAL_BUFFER_SIZE] = {};
+static char stri_corrangle_x[STRI_VAL_BUFFER_SIZE] = {};
+static char stri_corrangle_y[STRI_VAL_BUFFER_SIZE] = {};
+static char stri_corrangle_z[STRI_VAL_BUFFER_SIZE] = {};
+static char stri_pitch[STRI_VAL_BUFFER_SIZE] = {};
+static char stri_roll[STRI_VAL_BUFFER_SIZE] = {};
+static char stri_orientation[STRI_VAL_BUFFER_SIZE] = {};
+
 
 
 /*************************************************************************************************/
@@ -567,15 +578,16 @@ void loop()
   xyzFloat raw;
   xyzFloat g;
   xyzFloat angle;
-  xyzFloat corrAngles;
+  xyzFloat corrangle;
   float pitch;
   float roll;
   byte intType;
+  String str_orientation;
 
    /* check for first run */
   if(FirstRun == FALSE)
   {
-    writeFile(SD, "/logging.txt", "count; raw-x; raw-y; raw-z; g-x; g-y; g-z;\n");
+    writeFile(SD, "/logging.txt", "count; raw-x; raw-y; raw-z; g-x; g-y; g-z; angle-x; angle-y; angle-z; corr-angle-x; corr-angle-y; corr-angle-z; pitch; roll; orientation\n");
     Serial.println("Start Logging...");
     /* build in LED */
     digitalWrite(LED_PIN, TRUE);
@@ -595,83 +607,93 @@ void loop()
   intType = myAcc.readAndClearInterrupts();
   if (myAcc.checkInterrupt(intType, ADXL345_OVERRUN))
   {
-    Serial.println("INT2 OVERRUN confirmed");
+    Serial.println("INT2 OVERRUN");
   }
   else if (myAcc.checkInterrupt(intType, ADXL345_WATERMARK))
   {
-    Serial.println("INT2 WATERMARK confirmed");
+    Serial.println("INT2 WATERMARK");
   }
   else if(myAcc.checkInterrupt(intType, ADXL345_FREEFALL))
   {
-    Serial.println("INT2 FREEFALL confirmed");
+    Serial.println("INT2 FREEFALL");
   }
   else if (myAcc.checkInterrupt(intType, ADXL345_INACTIVITY))
   {
-    Serial.println("INT2 INACTIVITY confirmed");
+    Serial.println("INT2 INACTIVITY");
   }
   else if (myAcc.checkInterrupt(intType, ADXL345_ACTIVITY))
   {
-    Serial.println("INT2 ACTIVITY confirmed");
+    Serial.println("INT2 ACTIVITY");
   }
   else if (myAcc.checkInterrupt(intType, ADXL345_DOUBLE_TAP))
   {
-    Serial.println("INT2 DOUBLE_TAP confirmed");
+    Serial.println("INT2 DOUBLE_TAP");
   }  
   else if (myAcc.checkInterrupt(intType, ADXL345_SINGLE_TAP))
   {
-    Serial.println("INT2 SIGLE_TAP confirmed");
+    Serial.println("INT2 SIGLE_TAP");
   } 
   else if (myAcc.checkInterrupt(intType, ADXL345_DATA_READY))
   {
-    Serial.println("INT2 DATA_READY confirmed");
+    Serial.println("INT2 DATA_READY");
   }
   else
   {
-    Serial.print("INT2 UNKNOWN confirmed: ");
+    Serial.print("INT2 UNKNOWN: ");
     Serial.println(intType);
   }
 
-  //myAcc.setMeasureMode(FALSE); // this is the actual stop
-
-  // for(int i=0; i < ADLX345_FIFO_BUFFER_SIZE; i++)
-  // { 
-  //   myAcc.getRawValues(&raw);
-  // }
-
-  //myAcc.readAndClearInterrupts();
-  //myAcc.setMeasureMode(true); // this is the actual start   
-
-  //delay(100);
-  
-  // // myAcc.readAndClearInterrupts();
-  // // myAcc.setMeasureMode(true); // this is the actual start
-  
-  for(int i=0; i < ADLX345_FIFO_BUFFER_SIZE; i++){ 
+  for(int i=0; i < ADLX345_FIFO_BUFFER_SIZE; i++)
+  { 
     myAcc.getRawValues(&raw);
     myAcc.getGValues(&g);
     myAcc.getAngles(&angle);
-    myAcc.getCorrAngles(&corrAngles);
+    myAcc.getCorrAngles(&corrangle);
+    pitch = myAcc.getPitch();
+    roll  = myAcc.getRoll();
+    str_orientation = myAcc.getOrientationAsString();
 
-       /* clear buffer's first */
-    memset(&OutBuffer[0],'/0',64);
-    memset(&stri_loopcounter[0],'/0',8);
-    memset(&stri_raw_x[0],'/0',8);
-    memset(&stri_raw_y[0],'/0',8);
-    memset(&stri_raw_z[0],'/0',8);
-    memset(&stri_g_x[0],'/0',8);
-    memset(&stri_g_y[0],'/0',8);
-    memset(&stri_g_z[0],'/0',8);
+
+    /* clear buffer's first */
+    memset(&OutBuffer[0],'/0',STRI_OUT_BUFFER_SIZE);
+    memset(&stri_loopcounter[0],'/0',STRI_VAL_BUFFER_SIZE);
+    memset(&stri_raw_x[0],'/0',STRI_VAL_BUFFER_SIZE);
+    memset(&stri_raw_y[0],'/0',STRI_VAL_BUFFER_SIZE);
+    memset(&stri_raw_z[0],'/0',STRI_VAL_BUFFER_SIZE);
+    memset(&stri_g_x[0],'/0',STRI_VAL_BUFFER_SIZE);
+    memset(&stri_g_y[0],'/0',STRI_VAL_BUFFER_SIZE);
+    memset(&stri_g_z[0],'/0',STRI_VAL_BUFFER_SIZE);
+    memset(&stri_angle_x[0],'/0',STRI_VAL_BUFFER_SIZE);
+    memset(&stri_angle_y[0],'/0',STRI_VAL_BUFFER_SIZE);
+    memset(&stri_angle_z[0],'/0',STRI_VAL_BUFFER_SIZE);
+    memset(&stri_corrangle_x[0],'/0',STRI_VAL_BUFFER_SIZE);
+    memset(&stri_corrangle_y[0],'/0',STRI_VAL_BUFFER_SIZE);
+    memset(&stri_corrangle_z[0],'/0',STRI_VAL_BUFFER_SIZE);
+    memset(&stri_pitch[0],'/0',STRI_VAL_BUFFER_SIZE);
+    memset(&stri_roll[0],'/0',STRI_VAL_BUFFER_SIZE);
+    memset(&stri_orientation[0],'/0',STRI_VAL_BUFFER_SIZE);
     
     /* Add leading zeros to the counter */
     intToStr(LoopCounter, stri_loopcounter, 7);
+    for(int u=0; u < STRI_VAL_BUFFER_SIZE; u++){
+      stri_orientation[u] = str_orientation.charAt(u);
+    }
 
     /* convert float to string with 2 decimal after comma values */
-    floatToString(raw.x, stri_raw_x, 8, 2);
-    floatToString(raw.y, stri_raw_y, 8, 2);
-    floatToString(raw.z, stri_raw_z, 8, 2);
-    floatToString(g.x, stri_g_x, 8, 2);
-    floatToString(g.y, stri_g_y, 8, 2);
-    floatToString(g.z, stri_g_z, 8, 2);
+    floatToString(raw.x, stri_raw_x, STRI_VAL_BUFFER_SIZE, 2);
+    floatToString(raw.y, stri_raw_y, STRI_VAL_BUFFER_SIZE, 2);
+    floatToString(raw.z, stri_raw_z, STRI_VAL_BUFFER_SIZE, 2);
+    floatToString(g.x, stri_g_x, STRI_VAL_BUFFER_SIZE, 2);
+    floatToString(g.y, stri_g_y, STRI_VAL_BUFFER_SIZE, 2);
+    floatToString(g.z, stri_g_z, STRI_VAL_BUFFER_SIZE, 2);
+    floatToString(angle.x, stri_angle_x, STRI_VAL_BUFFER_SIZE, 2);
+    floatToString(angle.y, stri_angle_y, STRI_VAL_BUFFER_SIZE, 2);
+    floatToString(angle.z, stri_angle_z, STRI_VAL_BUFFER_SIZE, 2);
+    floatToString(corrangle.x, stri_corrangle_x, STRI_VAL_BUFFER_SIZE, 2);
+    floatToString(corrangle.y, stri_corrangle_y, STRI_VAL_BUFFER_SIZE, 2);
+    floatToString(corrangle.z, stri_corrangle_z, STRI_VAL_BUFFER_SIZE, 2);
+    floatToString(pitch, stri_pitch, STRI_VAL_BUFFER_SIZE, 2);
+    floatToString(roll, stri_roll, STRI_VAL_BUFFER_SIZE, 2);
 
     /* fill buffer with the counter, raw values and g-values */
     strcpy(OutBuffer, stri_loopcounter);
@@ -687,16 +709,32 @@ void loop()
     strcat(OutBuffer, stri_g_y);
     strcat(OutBuffer, "; ");
     strcat(OutBuffer, stri_g_z);
+    strcat(OutBuffer, "; ");
+    strcat(OutBuffer, stri_angle_x);
+    strcat(OutBuffer, "; ");
+    strcat(OutBuffer, stri_angle_y);
+    strcat(OutBuffer, "; ");
+    strcat(OutBuffer, stri_angle_z);
+    strcat(OutBuffer, "; ");
+    strcat(OutBuffer, stri_corrangle_x);
+    strcat(OutBuffer, "; ");
+    strcat(OutBuffer, stri_corrangle_y);
+    strcat(OutBuffer, "; ");
+    strcat(OutBuffer, stri_corrangle_z);
+    strcat(OutBuffer, "; ");
+    strcat(OutBuffer, stri_pitch);
+    strcat(OutBuffer, "; ");
+    strcat(OutBuffer, stri_roll);
+    strcat(OutBuffer, "; ");
+    strcat(OutBuffer, stri_orientation);
     strcat(OutBuffer, "\n");
 
     /* replacement of dots to commata */
     replaceWord(OutBuffer, ".",",");
 
+    /* output each buffer */
+    //printf("%s", &OutBuffer[0]);
     
-    printf("%s", &OutBuffer[0]);
-
-
-
     // Serial.print("Raw-x = ");
     // Serial.print(raw.x);
     // Serial.print("  |  Raw-y = ");
@@ -721,11 +759,11 @@ void loop()
     // Serial.println(angle.z);
 
     // Serial.print("Angle x = ");
-    // Serial.print(corrAngles.x);
+    // Serial.print(corrangle.x);
     // Serial.print("  |  Angle y = ");
-    // Serial.print(corrAngles.y);
+    // Serial.print(corrangle.y);
     // Serial.print("  |  Angle z = ");
-    // Serial.println(corrAngles.z);
+    // Serial.println(corrangle.z);
 
     // pitch = myAcc.getPitch();
     // roll  = myAcc.getRoll();
@@ -748,30 +786,20 @@ void loop()
     }
       
     LoopCounter++; 
-    // //   /* check if FIFO is empty */
-    // //   // if(myAcc.getFifoStatus() == 0){
-    // //   //   break;
-    // //   // }
-    myAcc.resetTrigger();
-    myAcc.readAndClearInterrupts();
-    myAcc.setMeasureMode(true); // this is the actual start
+    /* check if FIFO is empty */
+    // if(myAcc.getFifoStatus() == 0){
+    //   Serial.print("FIFO end");
+    //   break;
+    // }
 
   } /* end loop */
 
-  // myAcc.readAndClearInterrupts();
-  // myAcc.setMeasureMode(true); // this is the actual start
+  /* print Last Buffer */
+  printf("%s", &OutBuffer[0]);
 
-  // Serial.println("For another series of measurements, enter any key and send");
-  
-  // while(!(Serial.available())){}
-  // Serial.read();
-  // Serial.println();
-
-  //myAcc.readAndClearInterrupts();
-  //myAcc.setMeasureMode(true); // this is the actual start
-  // delay(3000);
-
-
+  myAcc.resetTrigger();
+  myAcc.readAndClearInterrupts();
+  myAcc.setMeasureMode(true); // this is the actual start
 }
 
 void event2ISR() {
