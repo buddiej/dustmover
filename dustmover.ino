@@ -18,7 +18,7 @@
 /*                                    PROJECT DEFINE                                     */
 /*****************************************************************************************/
 #define ADXL345_I2CADDR 0x53 // 0x1D if SDO = HIGH
-#define ADLX345_FIFO_BUFFER_SIZE 32
+#define ADLX345_FIFO_BUFFER_SIZE 16
 #define LED_PIN 16
 #define STRI_OUT_BUFFER_SIZE 128
 #define STRI_VAL_BUFFER_SIZE 8
@@ -518,7 +518,7 @@ void setup() {
   delay(2000);
   myAcc.measureAngleOffsets();
 
-  myAcc.setDataRate(ADXL345_DATA_RATE_100);
+  myAcc.setDataRate(ADXL345_DATA_RATE_3200);
   delay(100);
   Serial.println(myAcc.getDataRateAsString());
   myAcc.setRange(ADXL345_RANGE_2G);
@@ -559,7 +559,7 @@ void setup() {
                         is kept in the FIFO and further samples are taken after the event until FIFO is full again. 
     ADXL345_BYPASS   -  no FIFO
 */   
-  myAcc.setFifoMode(ADXL345_TRIGGER); 
+  myAcc.setFifoMode(ADXL345_FIFO); 
   myAcc.readAndClearInterrupts();
   
   delay(100);
@@ -602,7 +602,6 @@ void loop()
   while(!int2event){}
   myAcc.setMeasureMode(false); // this is the actual stop
   int2event = FALSE;
-  //Serial.println("INT2 triggered");
 
   intType = myAcc.readAndClearInterrupts();
   if (myAcc.checkInterrupt(intType, ADXL345_OVERRUN))
@@ -611,7 +610,7 @@ void loop()
   }
   else if (myAcc.checkInterrupt(intType, ADXL345_WATERMARK))
   {
-    Serial.println("INT2 WATERMARK");
+    //Serial.println("INT2 WATERMARK");
   }
   else if(myAcc.checkInterrupt(intType, ADXL345_FREEFALL))
   {
@@ -789,13 +788,16 @@ void loop()
     /* check if FIFO is empty */
     // if(myAcc.getFifoStatus() == 0){
     //   Serial.print("FIFO end");
-    //   break;
-    // }
+    // break;
+    //}
 
   } /* end loop */
 
-  /* print Last Buffer */
-  printf("%s", &OutBuffer[0]);
+  /* print every 512th Buffer */
+  if(LoopCounter % 512 == 0 )
+  {
+    printf("%s", &OutBuffer[0]);
+  }
 
   myAcc.resetTrigger();
   myAcc.readAndClearInterrupts();
