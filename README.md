@@ -1,6 +1,12 @@
 # dustmover
 sensor sytem for detection of position and acceleration with data logging on SD-Card
 
+## Neuer Einstieg: ESP32, Arduino und FreeRTOS
+
+Eine separate Projektbasis liegt in `firmware/DustMover/`. PlatformIO baut diese
+über `platformio.ini`; der ursprüngliche Sketch unten bleibt als Referenz erhalten.
+Einrichtung, Architektur, Verdrahtung und Grenzen: [Toolchain und Projektstart](docs/TOOLCHAIN.md).
+
 *Usage of*
 - SD-Card (for logging)
 - ADXL 345 acceleration sensor 
