@@ -263,10 +263,8 @@ static void probeMiso() {
 
 void setup() {
   Serial.begin(config::serialBaud);
-#if DUSTMOVER_USE_SD
   digitalWrite(config::sdCs, HIGH);
   pinMode(config::sdCs, OUTPUT);
-#endif
   if (config::useDataReadyInterrupt) {
     pinMode(config::dataReady, INPUT_PULLDOWN);
   }
