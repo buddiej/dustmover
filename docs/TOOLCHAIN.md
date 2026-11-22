@@ -27,6 +27,7 @@ platformio.ini                      Board und Framework
 firmware/DustMover/Config.h          SPI-Pins, Interrupt-Option und Puffergröße
 firmware/DustMover/Icm42688.*         SPI-Treiber für den ICM-42688-P
 firmware/DustMover/DustMover.ino     Messaufgabe, UART und SD-Aufgabe
+tools/flash_and_test.py              Flashen und Selbsttest über die serielle Ausgabe
 dustmover.ino                        ursprünglicher Sketch als Referenz
 ```
 
@@ -52,6 +53,45 @@ pio device monitor -b 230400
 Bei mehreren seriellen Geräten den passenden Port über `--upload-port` auswählen;
 für den Monitor `--port` verwenden. Unter Linux können serielle Gruppenrechte,
 unter Windows/macOS ein zum USB-Chip passender Treiber nötig sein.
+
+### USB-Seriell-Treiber
+
+Der ESP32 DevKit meldet sich über einen USB-Seriell-Wandler am Rechner an.
+Welcher Chip verbaut ist, steht auf dem kleinen IC neben der USB-Buchse.
+
+| Wandler | Windows | macOS | Linux |
+| --- | --- | --- | --- |
+| Silicon Labs CP2102/CP2104 | [CP210x VCP-Treiber](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers) installieren | ab macOS 10.15 meist eingebaut, sonst CP210x VCP-Treiber | im Kernel enthalten (`cp210x`) |
+| WCH CH340/CH341/CH9102 | [CH341SER-Treiber](https://www.wch-ic.com/downloads/CH341SER_EXE.html) installieren | neuere Versionen eingebaut, sonst [CH34x-Treiber](https://www.wch-ic.com/downloads/CH34XSER_MAC_ZIP.html) | im Kernel enthalten (`ch341`) |
+
+- Erscheint kein Port (Windows: Geräte-Manager → *Anschlüsse (COM & LPT)*;
+  macOS/Linux: `pio device list`), zuerst ein anderes USB-Kabel versuchen:
+  reine Ladekabel haben keine Datenleitungen.
+- Linux: Den Benutzer mit `sudo usermod -aG dialout $USER` in die Gruppe
+  `dialout` aufnehmen und neu anmelden. Bei CH340 kann das Paket `brltty`
+  den Port belegen; dann `sudo apt remove brltty`.
+- Verbindet sich der Upload nicht (`Connecting......`), die Taste **BOOT**
+  gedrückt halten, bis der Upload startet.
+
+### Flashen und Selbsttest
+
+`tools/flash_and_test.py` baut die Firmware, lädt sie hoch, startet den ESP32
+neu, zeichnet die serielle Ausgabe 10 s lang auf und prüft sie. Voraussetzungen:
+PlatformIO Core und `pip install pyserial`. Den Sensor dabei ruhig liegen lassen.
+
+```sh
+python tools/flash_and_test.py                # Port automatisch suchen
+python tools/flash_and_test.py --port COM5    # Port vorgeben
+python tools/flash_and_test.py --no-upload    # nur die vorhandene Firmware testen
+python tools/flash_and_test.py --env esp32dev_sd
+```
+
+Geprüft werden: keine `ERROR`-Zeilen, `WHO_AM_I=0x47`, Start der Ausgabe,
+Abtastrate innerhalb von 10 % um 100 Hz, monoton steigende Zeitstempel,
+`read_errors`, `coalesced` und `queue_drops` gleich null, Betrag der
+Beschleunigung von etwa 1 g und sich ändernde Messwerte. Das Skript endet
+mit `RESULT: PASS` oder `RESULT: FAIL`. Die vollständige Ausgabe steht in
+`.pio/flash-test.log`.
 
 Für Arduino IDE 2 das Boardverwalter-Paket `esp32 by Espressif Systems` in
 Version 2.0.17 installieren. `firmware/DustMover/DustMover.ino` öffnen und

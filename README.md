@@ -22,6 +22,9 @@ Dazu `INT2` mit `GPIO27` verbinden.
 Build für den klassischen ESP32 DevKit mit `pio run -e esp32dev`. Für
 einen Aufbau mit Kartenleser ist `esp32dev_sd` verfügbar.
 
+Flashen und Selbsttest am angeschlossenen Board: `python tools/flash_and_test.py`.
+USB-Treiber und Details stehen in [Toolchain und Projektstart](docs/TOOLCHAIN.md).
+
 ## Frühere Verdrahtung mit ADXL345
 
 The previous ESP32/ADXL345 wiring is shown in the Fritzing-style diagram:
