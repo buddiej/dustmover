@@ -37,9 +37,9 @@
 /*                                      VARIABLES                                        */
 /*****************************************************************************************/
 ADXL345_WE myAcc = ADXL345_WE(ADXL345_I2CADDR);
-const int int2Pin = 2;
+const int int1Pin = 27;
 
-static volatile bool int2event = FALSE;
+static volatile bool int1event = FALSE;
 
 static volatile uint8_t FirstRun = FALSE;
 static volatile uint32_t LoopCounter = 0;
@@ -467,7 +467,7 @@ void setup() {
   /* build in LED */
   pinMode(LED_PIN, OUTPUT);
 
-  pinMode(int2Pin, INPUT);
+  pinMode(int1Pin, INPUT);
 
 
   /************* Initializing SD-Card *****************/
@@ -525,7 +525,7 @@ void setup() {
   Serial.print("  /  g-Range: ");
   Serial.println(myAcc.getRangeAsString());
 
-  attachInterrupt(digitalPinToInterrupt(int2Pin), event2ISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(int1Pin), event1ISR, RISING);
 
   
 /* You can choose the following interrupts:
@@ -599,46 +599,46 @@ void loop()
 
   } 
 
-  while(!int2event){}
+  while(!int1event){}
   myAcc.setMeasureMode(false); // this is the actual stop
-  int2event = FALSE;
+  int1event = FALSE;
 
   intType = myAcc.readAndClearInterrupts();
   if (myAcc.checkInterrupt(intType, ADXL345_OVERRUN))
   {
-    Serial.println("INT2 OVERRUN");
+    Serial.println("INT1 OVERRUN");
   }
   else if (myAcc.checkInterrupt(intType, ADXL345_WATERMARK))
   {
-    //Serial.println("INT2 WATERMARK");
+    //Serial.println("INT1 WATERMARK");
   }
   else if(myAcc.checkInterrupt(intType, ADXL345_FREEFALL))
   {
-    Serial.println("INT2 FREEFALL");
+    Serial.println("INT1 FREEFALL");
   }
   else if (myAcc.checkInterrupt(intType, ADXL345_INACTIVITY))
   {
-    Serial.println("INT2 INACTIVITY");
+    Serial.println("INT1 INACTIVITY");
   }
   else if (myAcc.checkInterrupt(intType, ADXL345_ACTIVITY))
   {
-    Serial.println("INT2 ACTIVITY");
+    Serial.println("INT1 ACTIVITY");
   }
   else if (myAcc.checkInterrupt(intType, ADXL345_DOUBLE_TAP))
   {
-    Serial.println("INT2 DOUBLE_TAP");
+    Serial.println("INT1 DOUBLE_TAP");
   }  
   else if (myAcc.checkInterrupt(intType, ADXL345_SINGLE_TAP))
   {
-    Serial.println("INT2 SIGLE_TAP");
+    Serial.println("INT1 SIGLE_TAP");
   } 
   else if (myAcc.checkInterrupt(intType, ADXL345_DATA_READY))
   {
-    Serial.println("INT2 DATA_READY");
+    Serial.println("INT1 DATA_READY");
   }
   else
   {
-    Serial.print("INT2 UNKNOWN: ");
+    Serial.print("INT1 UNKNOWN: ");
     Serial.println(intType);
   }
 
@@ -804,6 +804,6 @@ void loop()
   myAcc.setMeasureMode(true); // this is the actual start
 }
 
-void event2ISR() {
-  int2event = TRUE;
+void event1ISR() {
+  int1event = TRUE;
 }

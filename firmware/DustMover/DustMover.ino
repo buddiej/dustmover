@@ -1,191 +1,384 @@
 #include <Arduino.h>
-#include <Wire.h>
-#include <SPI.h>
-#include <SD.h>
-#include <ADXL345_WE.h>
+#include <atomic>
+#include <driver/gpio.h>
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <freertos/queue.h>
-#include "Config.h"
 
-// The timer wakes the sampler. All I2C work belongs to the sampler;
-// all file writes belong to the logger. No I/O in the timer callback.
+#include "Config.h"
+#include "Icm42688.h"
+
+#if DUSTMOVER_USE_SD
+#include <SD.h>
+#include <SPI.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <freertos/queue.h>
+#include <unistd.h>
+#endif
+
 struct Sample {
   int64_t timeUs;
   uint32_t sequence;
-  uint32_t skippedTicks;
+  uint32_t dataReadyEvents;
+  uint32_t coalesced;
   uint32_t queueDrops;
   uint32_t readErrors;
-  float x, y, z;
+  Icm42688::RawSample raw;
 };
 
-static ADXL345_WE sensor(config::sensorAddress);
-static QueueHandle_t samples = nullptr;
+struct RuntimeStats {
+  std::atomic<uint32_t> sequence{0};
+  std::atomic<uint32_t> coalesced{0};
+  std::atomic<uint32_t> readErrors{0};
+  std::atomic<uint32_t> sampled{0};
+#if DUSTMOVER_USE_SD
+  std::atomic<uint32_t> written{0};
+  std::atomic<uint32_t> queueDrops{0};
+  std::atomic<uint32_t> sdErrors{0};
+#endif
+};
+
+static constexpr char csvHeader[] =
+    "t_us,sequence,data_ready_events,coalesced,queue_drops,read_errors,"
+    "x_raw,y_raw,z_raw,gx_raw,gy_raw,gz_raw\n";
+static constexpr size_t csvLineSize = 160;
+
+static Icm42688 sensor(config::sensorCs, config::sensorSpiHz);
 static TaskHandle_t samplerHandle = nullptr;
+static RuntimeStats stats;
+static bool sampling = false;
+
+#if DUSTMOVER_USE_SD
+static constexpr char sdMountPoint[] = "/sd";
+static QueueHandle_t sampleQueue = nullptr;
 static TaskHandle_t loggerHandle = nullptr;
-static esp_timer_handle_t sampleTimer = nullptr;
-static File logFile;
+static std::atomic<bool> logging{false};
+static int logFd = -1;
 
-static void timerCallback(void *) {
-  xTaskNotifyGive(samplerHandle);  // ESP_TIMER_TASK context, not an ISR
-}
+static bool writeBlock(const char *data, size_t length);
+static void closeSession();
+static bool openSession();
+static void loggerTask(void *);
+static bool startLogger();
+#else
+static void probeMiso();
+#endif
 
-static void samplerTask(void *) {
-  uint32_t sequence = 0, skippedTicks = 0, queueDrops = 0, readErrors = 0;
-  for (;;) {
-    const uint32_t ticks = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    // Late wakeups read one current value; never invent historical samples.
-    skippedTicks += ticks - 1;
-    sequence += ticks;
-    xyzFloat acceleration;
-    const int64_t readStartedUs = esp_timer_get_time();
-    if (!sensor.getGValues(&acceleration)) {
-      ++readErrors;
-      if (readErrors == 1) Serial.println("ERROR: Sensor read failed; invalid values are skipped.");
-      continue;
-    }
-    Sample sample{readStartedUs, sequence, skippedTicks, queueDrops, readErrors,
-                  acceleration.x, acceleration.y, acceleration.z};
-    if (xQueueSend(samples, &sample, 0) != pdTRUE) {
-      ++queueDrops;  // finite queue, explicit drop-newest policy
-    }
+static void IRAM_ATTR dataReadyISR() {
+  BaseType_t higherPriorityTaskWoken = pdFALSE;
+  vTaskNotifyGiveFromISR(samplerHandle, &higherPriorityTaskWoken);
+  if (higherPriorityTaskWoken == pdTRUE) {
+    portYIELD_FROM_ISR();
   }
 }
 
-static bool writeBlock(const char *data, size_t length) {
-  return logFile.write(reinterpret_cast<const uint8_t *>(data), length) == length
-         && !logFile.getWriteError();
+static int formatSample(char *line, const Sample &sample) {
+  return snprintf(line, csvLineSize, "%lld,%lu,%lu,%lu,%lu,%lu,%d,%d,%d,%d,%d,%d\n",
+                  static_cast<long long>(sample.timeUs),
+                  static_cast<unsigned long>(sample.sequence),
+                  static_cast<unsigned long>(sample.dataReadyEvents),
+                  static_cast<unsigned long>(sample.coalesced),
+                  static_cast<unsigned long>(sample.queueDrops),
+                  static_cast<unsigned long>(sample.readErrors),
+                  sample.raw.ax, sample.raw.ay, sample.raw.az,
+                  sample.raw.gx, sample.raw.gy, sample.raw.gz);
 }
 
-static void loggerTask(void *) {
-  // Do not write until setup has successfully created and started the timer.
-  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-  char block[2048];
-  size_t used = 0;
-  uint32_t lastFlush = millis();
-  bool healthy = true;
-  for (;;) {
-    Sample sample;
-    if (xQueueReceive(samples, &sample, pdMS_TO_TICKS(100)) == pdTRUE) {
-      char line[160];
-      const int length = snprintf(line, sizeof(line), "%lld;%lu;%lu;%lu;%lu;%.6f;%.6f;%.6f\n",
-          static_cast<long long>(sample.timeUs),
-          static_cast<unsigned long>(sample.sequence),
-          static_cast<unsigned long>(sample.skippedTicks),
-          static_cast<unsigned long>(sample.queueDrops),
-          static_cast<unsigned long>(sample.readErrors), sample.x, sample.y, sample.z);
-      if (length <= 0 || static_cast<size_t>(length) >= sizeof(line)) {
-        healthy = false;
-      } else {
-        if (used + length > sizeof(block)) {
-          healthy = writeBlock(block, used);
-          used = 0;
-        }
-        if (healthy) {
-          memcpy(block + used, line, length);
-          used += length;
-        }
-      }
-    }
-    if (healthy && static_cast<uint32_t>(millis() - lastFlush) >= config::flushPeriodMs) {
-      if (used) healthy = writeBlock(block, used);
-      used = 0;
-      logFile.flush();
-      healthy = healthy && !logFile.getWriteError();
-      lastFlush = millis();
-    }
-    if (!healthy) {
-      esp_timer_stop(sampleTimer);
-      logFile.close();
-      Serial.println("ERROR: SD write failed. Recording stopped; reboot after checking card.");
-      vTaskSuspend(nullptr);
-    }
+#if DUSTMOVER_USE_SD
+static bool writeBlock(const char *data, size_t length) {
+  return write(logFd, data, length) == static_cast<ssize_t>(length);
+}
+
+static void closeSession() {
+  if (logFd >= 0) {
+    close(logFd);
+    logFd = -1;
   }
 }
 
 static bool openSession() {
-  char path[24];
-  for (unsigned int i = 0; i < 100000; ++i) {
-    snprintf(path, sizeof(path), "/dm%05u.csv", i);
-    if (SD.exists(path)) continue;
-    logFile = SD.open(path, FILE_WRITE);
-    if (!logFile) return false;
-    const char *header = "t_us;sequence;skipped_timer_ticks;queue_drops;read_errors;x_g;y_g;z_g\n";
-    if (!writeBlock(header, strlen(header))) {
-      logFile.close();
+  char path[32];
+  for (unsigned int index = 0; index < 100000; ++index) {
+    snprintf(path, sizeof(path), "%s/dm%05u.csv", sdMountPoint, index);
+    logFd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0666);
+    if (logFd < 0) {
+      if (errno == EEXIST) {
+        continue;
+      }
       return false;
     }
-    logFile.flush();
-    if (logFile.getWriteError()) {
-      logFile.close();
+    if (!writeBlock(csvHeader, sizeof(csvHeader) - 1) || fsync(logFd) != 0) {
+      closeSession();
       return false;
     }
-    Serial.printf("Log: %s\n", path);
+    Serial.printf("LOGGER file=%s\n", path + sizeof(sdMountPoint) - 1);
     return true;
   }
   return false;
 }
+#endif
 
-static void cleanupStartup() {
-  if (sampleTimer) {
-    esp_timer_delete(sampleTimer);
-    sampleTimer = nullptr;
+static void samplerTask(void *) {
+  uint32_t sequence = 0;
+  uint32_t coalesced = 0;
+  uint32_t readErrors = 0;
+  uint32_t queueDrops = 0;
+  uint32_t sampled = 0;
+  char line[csvLineSize];
+
+  for (;;) {
+    uint32_t events = 1;
+    if (config::useDataReadyInterrupt) {
+      events = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+      sequence += events;
+      coalesced += events - 1;
+      stats.sequence = sequence;
+      stats.coalesced = coalesced;
+    } else {
+      // Poll the sensor's latched data-ready flag and yield between checks.
+      vTaskDelay(1);
+    }
+
+    Icm42688::RawSample raw;
+    const auto result = sensor.readSample(raw);
+    if (result != Icm42688::ReadResult::ready) {
+      if (result == Icm42688::ReadResult::invalid) {
+        stats.readErrors = ++readErrors;
+      }
+      continue;
+    }
+
+    if (!config::useDataReadyInterrupt) {
+      stats.sequence = ++sequence;
+    }
+    const int64_t timeUs = esp_timer_get_time();
+    Sample sample{timeUs, sequence, events, coalesced, queueDrops, readErrors, raw};
+    stats.sampled = ++sampled;
+#if DUSTMOVER_USE_SD
+    if (logging && xQueueSend(sampleQueue, &sample, 0) != pdTRUE) {
+      sample.queueDrops = ++queueDrops;
+      stats.queueDrops = queueDrops;
+    }
+#endif
+
+    const int length = formatSample(line, sample);
+    if (length > 0 && static_cast<size_t>(length) < sizeof(line)) {
+      Serial.printf("RAW,%s", line);
+    }
   }
-  if (samplerHandle) vTaskDelete(samplerHandle);
-  if (loggerHandle) vTaskDelete(loggerHandle);
-  if (samples) vQueueDelete(samples);
-  logFile.close();
 }
 
-void setup() {
-  Serial.begin(115200);
-  delay(300);
-  Serial.println("DustMover: ESP32 / Arduino / FreeRTOS / 100 Hz polling");
-  Wire.begin(config::sda, config::scl);
-  Wire.setClock(400000);
-  Wire.setTimeOut(20);
-  if (!sensor.init()) {
-    Serial.println("ERROR: ADXL345 missing. Check wiring/address. Recording not started.");
-    return;
+#if DUSTMOVER_USE_SD
+static void loggerTask(void *) {
+  char block[2048];
+  size_t used = 0;
+  uint32_t pendingRows = 0;
+  uint32_t written = 0;
+  uint32_t lastFlush = millis();
+
+  for (;;) {
+    Sample sample;
+    if (xQueueReceive(sampleQueue, &sample, pdMS_TO_TICKS(50)) == pdTRUE) {
+      char line[csvLineSize];
+      const int length = formatSample(line, sample);
+      if (length <= 0 || static_cast<size_t>(length) >= sizeof(line)) {
+        break;
+      }
+      if (used + static_cast<size_t>(length) > sizeof(block)) {
+        if (!writeBlock(block, used)) {
+          break;
+        }
+        used = 0;
+      }
+      memcpy(block + used, line, length);
+      used += length;
+      ++pendingRows;
+    }
+
+    const uint32_t now = millis();
+    if (pendingRows && now - lastFlush >= config::flushPeriodMs) {
+      if (!writeBlock(block, used) || fsync(logFd) != 0) {
+        break;
+      }
+      used = 0;
+      written += pendingRows;
+      pendingRows = 0;
+      stats.written = written;
+      lastFlush = now;
+    }
   }
-  // 200 Hz sensor ODR, 100 Hz latest-value polling; intentionally no FIFO.
-  if (!sensor.setDataRate(ADXL345_DATA_RATE_200) ||
-      !sensor.setRange(ADXL345_RANGE_2G) ||
-      !sensor.setFifoMode(ADXL345_BYPASS) ||
-      !sensor.setMeasureMode(true)) {
-    Serial.println("ERROR: Sensor configuration failed. Recording not started.");
+
+  logging = false;
+  stats.sdErrors = 1;
+  closeSession();
+  Serial.println("ERROR: SD write or sync failed. UART streaming continues.");
+  vTaskDelete(nullptr);
+}
+
+static bool startLogger() {
+  if (!openSession()) {
+    Serial.println("ERROR: Could not create or sync the SD log file.");
+    return false;
+  }
+  sampleQueue = xQueueCreate(config::queueLength, sizeof(Sample));
+  if (sampleQueue &&
+      xTaskCreate(loggerTask, "sd-logger", 6144, nullptr, 1, &loggerHandle) == pdPASS) {
+    return true;
+  }
+  if (sampleQueue) {
+    vQueueDelete(sampleQueue);
+    sampleQueue = nullptr;
+  }
+  closeSession();
+  Serial.println("ERROR: Could not allocate SD logger resources.");
+  return false;
+}
+#endif
+
+#if !DUSTMOVER_USE_SD
+static void probeMiso() {
+  const auto miso = static_cast<gpio_num_t>(config::spiMiso);
+  const gpio_pull_mode_t modes[] = {GPIO_PULLUP_ONLY, GPIO_PULLDOWN_ONLY};
+  const char *labels[] = {"pull-up", "pull-down"};
+  for (size_t i = 0; i < 2; ++i) {
+    if (gpio_set_pull_mode(miso, modes[i]) != ESP_OK) {
+      Serial.println("DIAG: Could not set MISO pull mode.");
+      break;
+    }
+    delayMicroseconds(10);
+    const int idle = gpio_get_level(miso);
+    uint8_t id;
+    if (sensor.whoAmI(id)) {
+      Serial.printf("DIAG: MISO GPIO%d %s idle=%d WHO_AM_I=0x%02X\n",
+                    config::spiMiso, labels[i], idle, static_cast<unsigned>(id));
+    } else {
+      Serial.printf("DIAG: MISO GPIO%d %s idle=%d SPI transfer failed\n",
+                    config::spiMiso, labels[i], idle);
+    }
+  }
+  gpio_set_pull_mode(miso, GPIO_FLOATING);
+}
+#endif
+
+void setup() {
+  Serial.begin(config::serialBaud);
+#if DUSTMOVER_USE_SD
+  digitalWrite(config::sdCs, HIGH);
+  pinMode(config::sdCs, OUTPUT);
+#endif
+  if (config::useDataReadyInterrupt) {
+    pinMode(config::dataReady, INPUT_PULLDOWN);
+  }
+  const esp_err_t spiError = sensor.begin(config::spiSck, config::spiMiso, config::spiMosi);
+  delay(300);
+  if (spiError != ESP_OK) {
+    Serial.printf("ERROR: SPI initialization failed: %s\n", esp_err_to_name(spiError));
     return;
   }
 
-  SPI.begin(config::sdSck, config::sdMiso, config::sdMosi, config::sdCs);
-  if (!SD.begin(config::sdCs, SPI, 4000000) || SD.cardType() == CARD_NONE || !openSession()) {
-    Serial.println("ERROR: SD unavailable. Recording not started.");
-    logFile.close();
+#if DUSTMOVER_USE_SD
+  Serial.println("DustMover: ICM-42688-P Arduino SPI and microSD");
+  Serial.printf("INIT: SCK=%d MISO=%d MOSI=%d ICM_CS=%d SD_CS=%d\n",
+                config::spiSck, config::spiMiso, config::spiMosi,
+                config::sensorCs, config::sdCs);
+
+  // Put the SD card into SPI mode before addressing the sensor.
+  const bool sdReady = SD.begin(config::sdCs, SPI, config::sdSpiHz, sdMountPoint) &&
+                       SD.cardType() != CARD_NONE;
+  if (sdReady) {
+    Serial.printf("INIT: SD card size=%llu MiB\n",
+                  static_cast<unsigned long long>(SD.cardSize() / (1024ULL * 1024ULL)));
+  } else {
+    digitalWrite(config::sdCs, HIGH);
+    stats.sdErrors = 1;
+    Serial.println("ERROR: SD unavailable. Trying sensor with UART output only.");
+  }
+#else
+  Serial.println("DustMover: ICM-42688-P ESP-IDF SPI3, UART output");
+  Serial.printf("INIT: SCK=%d OUT, MOSI=%d OUT, MISO=%d IN, CS=%d OUT active low\n",
+                config::spiSck, config::spiMosi, config::spiMiso, config::sensorCs);
+  if (config::useDataReadyInterrupt) {
+    Serial.printf("INIT: INT2=%d IN pull-down, rising edge\n", config::dataReady);
+  }
+#endif
+
+  uint8_t id;
+  if (!sensor.whoAmI(id)) {
+    Serial.println("ERROR: SPI transfer failed during WHO_AM_I read.");
     return;
   }
-  samples = xQueueCreate(config::queueLength, sizeof(Sample));
-  if (!samples ||
-      xTaskCreate(samplerTask, "sampler", 4096, nullptr, 3, &samplerHandle) != pdPASS ||
-      xTaskCreate(loggerTask, "sd-logger", 6144, nullptr, 1, &loggerHandle) != pdPASS) {
-    Serial.println("ERROR: Cannot allocate queue/tasks. Recording not started.");
-    cleanupStartup();
+  Serial.printf("INIT: ICM-42688-P WHO_AM_I=0x%02X\n", static_cast<unsigned>(id));
+  if (id != Icm42688::expectedId) {
+    Serial.println("ERROR: Unexpected sensor ID. Expected 0x47.");
+#if !DUSTMOVER_USE_SD
+    probeMiso();
+#endif
     return;
   }
-  esp_timer_create_args_t timerArgs{};
-  timerArgs.callback = timerCallback;
-  timerArgs.dispatch_method = ESP_TIMER_TASK;
-  timerArgs.name = "sample-clock";
-  if (esp_timer_create(&timerArgs, &sampleTimer) != ESP_OK ||
-      esp_timer_start_periodic(sampleTimer, config::samplePeriodUs) != ESP_OK) {
-    Serial.println("ERROR: Timer start failed. Recording not started.");
-    cleanupStartup();
+  if (!sensor.configure(config::useDataReadyInterrupt)) {
+    Serial.println("ERROR: ICM-42688-P configuration failed.");
     return;
   }
-  xTaskNotifyGive(loggerHandle);
-  Serial.println("Recording started. Keep card inserted and power stable.");
+  Serial.println("INIT: 100 Hz, accel +/-2 g, gyro +/-250 deg/s");
+  Serial.printf("CSV: %s", csvHeader);
+
+#if DUSTMOVER_USE_SD
+  if (sdReady) {
+    logging = startLogger();
+    if (!logging) {
+      stats.sdErrors = 1;
+    }
+  }
+#endif
+  if (xTaskCreate(samplerTask, "sampler", 4096, nullptr, 3, &samplerHandle) != pdPASS) {
+#if DUSTMOVER_USE_SD
+    if (logging) {
+      logging = false;
+      vTaskDelete(loggerHandle);
+      vQueueDelete(sampleQueue);
+      closeSession();
+    }
+#endif
+    Serial.println("ERROR: Could not start sampler task.");
+    return;
+  }
+
+  if (config::useDataReadyInterrupt) {
+    attachInterrupt(digitalPinToInterrupt(config::dataReady), dataReadyISR, RISING);
+    Serial.printf("INIT: INT2 data ready on GPIO%d\n", config::dataReady);
+  } else {
+    Serial.println("INIT: Polling sensor data-ready status");
+  }
+  sampling = true;
+#if DUSTMOVER_USE_SD
+  Serial.println(logging ? "LOGGER started." : "LOGGER unavailable. UART streaming only.");
+#else
+  Serial.println("UART streaming started.");
+#endif
 }
 
 void loop() {
-  delay(1000); // FreeRTOS tasks perform acquisition and logging.
+  if (sampling) {
+#if DUSTMOVER_USE_SD
+    Serial.printf("DBG state=%s seq=%lu sampled=%lu written=%lu coalesced=%lu "
+                  "queue_drops=%lu read_errors=%lu sd_errors=%lu\n",
+                  logging ? "RUN" : "UART",
+                  static_cast<unsigned long>(stats.sequence.load()),
+                  static_cast<unsigned long>(stats.sampled.load()),
+                  static_cast<unsigned long>(stats.written.load()),
+                  static_cast<unsigned long>(stats.coalesced.load()),
+                  static_cast<unsigned long>(stats.queueDrops.load()),
+                  static_cast<unsigned long>(stats.readErrors.load()),
+                  static_cast<unsigned long>(stats.sdErrors.load()));
+#else
+    Serial.printf("DBG state=UART seq=%lu sampled=%lu written=0 coalesced=%lu "
+                  "queue_drops=0 read_errors=%lu sd_errors=0\n",
+                  static_cast<unsigned long>(stats.sequence.load()),
+                  static_cast<unsigned long>(stats.sampled.load()),
+                  static_cast<unsigned long>(stats.coalesced.load()),
+                  static_cast<unsigned long>(stats.readErrors.load()));
+#endif
+  }
+  delay(1000);
 }

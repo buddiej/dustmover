@@ -2,10 +2,8 @@
 
 ## Empfehlung
 
-Für den vorhandenen ESP32 mit ADXL345 und SD-Karte: **VS Code + PlatformIO +
-Arduino-ESP32 + das darin enthaltene FreeRTOS**. Damit lassen sich Arduino-Bibliotheken
-weiterverwenden, während Messung und SD-Schreiben getrennte Aufgaben bekommen.
-Ein zusätzliches Betriebssystem muss dafür nicht installiert werden.
+Für den ESP32 mit ICM-42688-P eignet sich **VS Code + PlatformIO +
+Arduino-ESP32 mit FreeRTOS**. Die Standardfirmware streamt Messdaten über UART.
 
 Diese Basis implementiert einen Sensorlogger. Die mechanische Rohrbeförderung,
 Antriebe und deren Steuerung sind noch nicht spezifiziert.
@@ -25,16 +23,15 @@ C3 und andere Boards brauchen passende Boarddefinitionen und Pinbelegungen.
 ## Was bereitliegt
 
 ```text
-platformio.ini                      Board, Framework und Bibliotheksversion
-firmware/DustMover/Config.h          Pins, Abtastintervall und Puffergröße
-firmware/DustMover/DustMover.ino     Timer, Messaufgabe und SD-Aufgabe
+platformio.ini                      Board und Framework
+firmware/DustMover/Config.h          SPI-Pins, Interrupt-Option und Puffergröße
+firmware/DustMover/Icm42688.*         SPI-Treiber für den ICM-42688-P
+firmware/DustMover/DustMover.ino     Messaufgabe, UART und SD-Aufgabe
 dustmover.ino                        ursprünglicher Sketch als Referenz
 ```
 
-PlatformIO ist auf `espressif32@6.10.0` festgelegt (Arduino-ESP32 2.0.17),
-die Sensorbibliothek auf `ADXL345_WE@3.1.0`. Das ist eine festgelegte Startbasis,
-keine Behauptung über die jeweils neuesten Versionen. Versionswechsel separat
-bauen und auf der Hardware prüfen.
+PlatformIO verwendet `espressif32@6.10.0` mit Arduino-ESP32 2.0.17.
+`esp32dev` ist der Standardbuild mit ESP-IDF-SPI3 und UART-Ausgabe.
 
 ## Einrichtung und erster Build
 
@@ -42,113 +39,98 @@ bauen und auf der Hardware prüfen.
 2. Den Projektordner mit `platformio.ini` öffnen.
 3. **PlatformIO: Build** ausführen. Beim ersten Mal werden Toolchain und Bibliotheken geladen.
 4. ESP32 per USB-Datenkabel verbinden, **Upload** ausführen.
-5. Den seriellen Monitor mit **115200 Baud** öffnen.
+5. Den seriellen Monitor mit **230400 Baud** öffnen.
 
 Alternativ mit installiertem PlatformIO Core aus dem Projektordner:
 
 ```sh
 pio run -e esp32dev
 pio run -e esp32dev -t upload
-pio device monitor -b 115200
+pio device monitor -b 230400
 ```
 
 Bei mehreren seriellen Geräten den passenden Port über `--upload-port` auswählen;
 für den Monitor `--port` verwenden. Unter Linux können serielle Gruppenrechte,
 unter Windows/macOS ein zum USB-Chip passender Treiber nötig sein.
 
-**Arduino IDE 2:** Boardverwalter-Paket `esp32 by Espressif Systems` in Version
-2.0.17 und Bibliothek `ADXL345_WE` in Version 3.1.0 installieren.
-`firmware/DustMover/DustMover.ino` öffnen, Board **ESP32 Dev Module** und Port wählen,
-kompilieren und hochladen. `Config.h` muss im selben Sketchordner bleiben.
-Die FreeRTOS- und ESP-Timer-Header gehören bereits zum ESP32-Boardpaket.
+Für Arduino IDE 2 das Boardverwalter-Paket `esp32 by Espressif Systems` in
+Version 2.0.17 installieren. `firmware/DustMover/DustMover.ino` öffnen und
+**ESP32 Dev Module** und den Port wählen. `Config.h`, `Icm42688.h` und
+`Icm42688.cpp` gehören in denselben Sketchordner.
 
 ## Verdrahtung
 
-Die Belegung übernimmt die klassischen ESP32-Pins aus dem Repository:
-
-| Bauteil | Anschluss | ESP32 |
+| ESP32 | GY-601N1 | Funktion |
 | --- | --- | --- |
-| ADXL345 | SDA | GPIO21 |
-| ADXL345 | SCL | GPIO22 |
-| ADXL345 | Versorgung / GND | 3,3 V / GND |
-| ADXL345 | CS | High / 3,3 V für I²C, falls das Modul dies nicht bereits vorgibt |
-| ADXL345 | SDO/ALT ADDRESS | GND für Adresse 0x53; High ergibt 0x1D |
-| SD | CS | GPIO5 |
-| SD | MOSI / DI | GPIO23 |
-| SD | MISO / DO | GPIO19 |
-| SD | SCK | GPIO18 |
-| SD | Versorgung / GND | gemäß Modulbeschaltung / gemeinsame Masse |
+| GPIO18 | SCL | SCK |
+| GPIO23 | SDA | MOSI |
+| GPIO19 | SA0 | MISO |
+| GPIO5 | CS | Chip-Select |
+| GPIO27 | INT2 | DATA_READY |
+| GND | GND | Masse |
+| 3V3 | VCC | 3,3-V-Versorgung |
 
-Alle Signalleitungen müssen mit **3,3-V-Logik** kompatibel sein. Eine nackte
-microSD-Karte wird mit 3,3 V versorgt; bei Breakouts deren Schaltung und
-Versorgungsvorgabe prüfen. I²C-Pull-ups nach 3,3 V müssen vorhanden sein.
-SD-Karte für den Einstieg mit FAT32 formatieren, z. B. eine SDHC-Karte mit 8–32 GB.
-GPIO5 ist beim klassischen ESP32 ein Strapping-Pin: Das Modul darf den Pegel beim
-Booten nicht unzulässig verändern. Bei Bootproblemen einen geeigneten freien
-CS-Pin wählen und `Config.h` anpassen.
+Für diesen Aufbau den Kartenleser vom SPI-Bus trennen. Die Versorgung und
+die Signalleitungen des Sensormoduls verwenden 3,3 V.
+GPIO5 ist ein Strapping-Pin. Der Sensor-CS soll beim Start inaktiv (High) sein.
 
-INT1 und INT2 des ADXL345 werden für diese zeitgesteuerte Einstiegsversion nicht
-benötigt. Die GPIO2-Verbindung aus dem alten Sketch kann entfallen. Eine
-eingebaute LED auf GPIO16 wird nicht vorausgesetzt.
+Die Firmware setzt CS, SCK und MOSI als Ausgänge. Vor der SPI-Initialisierung
+setzt sie CS auf High und SCK und MOSI auf Low. SPI-Modus 0 hält SCK in
+Ruhe auf Low. MISO ist ein Eingang ohne internen Pull-Widerstand. INT2 ist
+ein Eingang mit Pull-down und löst bei steigender Flanke aus.
 
-## Mess- und Speicherablauf
+Bei einer unerwarteten Sensor-ID wiederholt der Standardbuild die Abfrage
+mit schwachem Pull-up und anschließend mit Pull-down an MISO. Wenn die
+Bytes dem eingestellten Pull folgen, hat der Sensor die Leitung bei dieser
+Abfrage wahrscheinlich nicht getrieben. Danach ist MISO wieder ohne Pull.
 
-```text
-ESP-Timer alle 10 ms
-    → Task-Benachrichtigung
-    → Messaufgabe, Priorität 3: Zeitstempel und I²C-Messwert
-    → Queue mit 512 Datensätzen
-    → SD-Aufgabe, Priorität 1: CSV in Blöcken schreiben, jede Sekunde flushen
-```
+Die Firmware wartet auf steigende Data-Ready-Flanken an GPIO27. Dazu
+`INT2` am Sensor anschließen. Die Ausgabe von Messwerten beginnt mit der
+ersten Flanke. Für einen Aufbau ohne INT2 kann
+`useDataReadyInterrupt` in `Config.h` auf `false` gesetzt werden.
 
-Der ESP-Timer benutzt `ESP_TIMER_TASK`: Sein Callback läuft in einem Systemtask
-und benachrichtigt nur die Messaufgabe. I²C und SD-Zugriffe stehen nicht im
-Callback. FreeRTOS plant die beiden Anwendungstasks; eine Core-Bindung wird nicht
-benötigt. Der Puffer überbrückt bei 100 Hz rechnerisch etwa **5,12 Sekunden**,
-sofern er vorher leer ist. Er garantiert keine maximale SD-Latenz.
-
-Der ADXL345 erzeugt intern 200 Messwerte/s. Alle nominell 10 ms wird sein aktuellster
-Wert gelesen; der FIFO bleibt abgeschaltet. Diese Polling-Basis synchronisiert
-sich nicht mit dem Sensortakt und speichert nicht jeden internen Sensorwert.
-Der Zeitstempel markiert den Beginn des I²C-Lesens, nicht den exakten Aufnahmezeitpunkt
-im Sensor. Ein verspäteter Task liest einmal und zählt zusammengefasste
-Timer-Benachrichtigungen. Datenverkehr und Scheduling können Jitter verursachen;
-dies ist keine Garantie für harte Echtzeit.
-
-Bei voller Queue wird der neue Datensatz verworfen und ein Zähler erhöht. Der
-nächste erfolgreich gespeicherte Datensatz enthält den aktualisierten Zähler;
-bei einem Ausfall ohne Folgedatensatz kann dieser letzte Zählerstand fehlen.
-Weitere verlorene Zwischenwerte im Sensor werden mit dieser Methode nicht erfasst.
-
-Nach jedem Start entsteht eine neue Datei: `/dm00000.csv`, `/dm00001.csv`, usw.
-Vorhandene Dateien werden nicht überschrieben. Die Spalten sind:
+## Messablauf
 
 ```text
-t_us;sequence;skipped_timer_ticks;queue_drops;read_errors;x_g;y_g;z_g
+ICM-42688-P mit nominell 100 Hz
+    → Data-Ready-Interrupt von INT2 an GPIO27
+    → Messaufgabe liest sechs Rohwerte per SPI
+    → UART mit 230400 Baud
 ```
 
-`t_us` sind Mikrosekunden der monotonen ESP-Laufzeituhr, kein Datum und keine Uhrzeit.
-`sequence` ist der laufende Timer-Tick-Zähler; Verlust- und Lesefehlerzähler sind kumulativ.
-Beschleunigungen stehen in g mit Dezimalpunkt; sie enthalten den Schwerkraftanteil.
-Es werden keine fremden Kalibrierfaktoren aus dem Original übernommen. Der
-Messbereich ist zunächst ±2 g und muss bei stärkeren Stößen angepasst werden.
+Die mit `RAW,` markierten UART-Zeilen verwenden folgende CSV-Felder.
 
-Fehlt beim Start Sensor oder SD-Karte, startet die Aufzeichnung nicht. Ein erkannter
-SD-Schreibfehler stoppt den Timer und meldet den Fehler seriell. Ein automatischer
-Wiederanlauf der SD-Aufzeichnung ist nicht enthalten. Meldet die Sensorbibliothek
-einen Lesefehler, wird der Datensatz ausgelassen und `read_errors` erhöht; die
-erste Störung wird seriell gemeldet. Nachfolgende gültige Datensätze enthalten den
-Fehlerzähler. Ohne spätere gültige Messwerte bleibt dieser Zähler auf der SD-Karte
-unsichtbar. Plausibilitätskontrollen und eine vollständige Fehlerzustandsmaschine
-sind noch zu ergänzen.
-`flush()` reduziert das Verlustfenster, macht das Dateisystem aber nicht stromausfallsicher.
-Zum kontrollierten Entnehmen wäre noch ein Stopptaster bzw. Stoppkommando zu ergänzen.
+```text
+t_us,sequence,data_ready_events,coalesced,queue_drops,read_errors,x_raw,y_raw,z_raw,gx_raw,gy_raw,gz_raw
+```
+
+`t_us` erfasst den ESP32-Zeitstempel in Mikrosekunden nach dem Lesen. Die
+Beschleunigung hat einen Messbereich von ±2 g und eine Skalierung von
+16 384 Schritten pro g. Die Drehrate hat ±250 °/s und etwa 131 Schritte pro °/s.
+`sequence` zählt im Abfragemodus gelesene Messungen und im Interruptmodus
+beobachtete Flanken. `coalesced` zählt im Interruptmodus zusammengefasste
+Ereignisse. `read_errors` ist kumulativ. `queue_drops` bleibt im
+Standardbuild für die Kompatibilität mit dem Logger-Format enthalten und
+hat den Wert null.
+
+## Build mit microSD
+
+Mit `pio run -e esp32dev_sd` lässt sich der Logger bauen. Diese Variante
+nutzt den Arduino-SPI-Treiber gemeinsam mit der SD-Bibliothek. Der Leser teilt
+SCK, MOSI/DI und MISO/DO mit dem Sensor und verwendet GPIO26 als eigenen CS.
+Der Leser muss MISO freigeben, wenn sein CS inaktiv ist. Die Versorgung
+richtet sich nach dem Lesermodul.
+
+Mit einer verfügbaren FAT32-Karte erzeugt dieser Build pro Neustart die nächste
+Datei `dm00000.csv`, `dm00001.csv` usw. und synchronisiert Daten ungefähr
+einmal pro Sekunde. Bei SD-Fehlern läuft die UART-Ausgabe weiter. Längere
+SD-Zugriffe können die Sensorabfrage am gemeinsamen SPI-Bus verzögern.
 
 ## Befund zum Original
 
 Geprüft: [dustmover.ino, Commit af1524e](https://github.com/buddiej/dustmover/blob/af1524e488445834498c97587a4f9d3c9db32b91/dustmover.ino).
 
-- Der WATERMARK-Interrupt wird auf `INT_PIN_1` konfiguriert, gewartet wird über
+- Der DATA_READY-Interrupt wird auf `INT_PIN_2` konfiguriert, gewartet wird über
   `int2Pin` auf GPIO2. Damit passt das erwartete Ereignis nicht zur dokumentierten Verdrahtung.
 - `while(!int2event){}` wartet ohne Timeout und ohne Freigabe an den Scheduler.
 - Während Lesen und Schreiben wird `setMeasureMode(false)` gesetzt: Messpausen entstehen.
@@ -168,28 +150,21 @@ untersuchen; direkte Strömungsmessung benötigt einen passenden Sensor.
 
 Zuerst die benötigte Signalbandbreite und Messdauer festlegen. Die 100 Hz hier
 sind ein Inbetriebnahmewert, keine begründete Rate für das spätere Messziel.
-Für Vibrationsmessung mit höherer Rate: DATA_READY oder FIFO-WATERMARK, konsistente
-Sampleblöcke, dokumentierte Zeitbasis und Überlauferkennung verwenden. Bei hohen
-ADXL345-Datenraten ist außerdem SPI statt I²C zu prüfen. Für längere Messungen
-sind Dateirotation, voller Datenträger, kontrollierter Stopp und Stromausfallverhalten
-zu ergänzen. Antriebssteuerung erst mit definierten Ausgängen, Zuständen und Rückmeldungen hinzufügen.
+Für verlustfreie Vibrationsmessung: FIFO im Stream-Modus mit WATERMARK/OVERRUN-
+Überwachung, konsistente Sampleblöcke und dokumentierte Zeitbasis verwenden.
+Für längere Messungen bleiben Dateirotation, kontrollierter Stopp und
+Stromausfallverhalten zu prüfen.
 
 ## Prüfung auf der Hardware
 
-**Buildprüfung am 31.10.2026:** `pio run -e esp32dev` erfolgreich mit der oben
-festgelegten Konfiguration. Flash: 354669 Byte; statischer RAM: 22512 Byte.
-Taskstacks und Queue benötigen zusätzlich dynamischen RAM. Keine angeschlossene
-Hardware und kein Uploadtest; Arduino IDE und andere Host-Betriebssysteme wurden
-hier nicht gesondert getestet.
-
-1. Ohne Sensor bzw. ohne SD starten: Fehlermeldung, keine gestartete Aufzeichnung.
-2. Mit beiden starten: Dateiname und Startmeldung erscheinen; neue CSV hat Kopfzeile.
+1. Mit dem Sensormodul starten. Der Monitor meldet `WHO_AM_I=0x47`
+   und `INT2 data ready on GPIO27`. Bei
+   ankommenden Interrupts steigen `seq` und `sampled` im Monitor.
+2. Ohne Sensor erscheint eine Fehlermeldung.
 3. Sensor ruhig hinlegen: ein plausibler Schwerkraftvektor von ungefähr 1 g,
    Achsenwerte ändern sich beim Kippen.
 4. Eine Minute aufzeichnen: nominell etwa 6000 Zeilen, monoton steigende Zeitstempel,
    Abstände ungefähr 10000 µs; Verlustzähler prüfen.
-5. SD-Schreibstörungen und Laufzeitfehler gezielt prüfen, bevor die Firmware als
-   verlässlicher Messlogger eingesetzt wird.
 
 Diese Prüfschritte sind ein Inbetriebnahmeplan; ohne angeschlossene Hardware
 lassen sich elektrische Funktion und tatsächliches Timing hier nicht bestätigen.
@@ -200,4 +175,6 @@ lassen sich elektrische Funktion und tatsächliches Timing hier nicht bestätige
 - [Arduino-ESP32](https://docs.espressif.com/projects/arduino-esp32/en/latest/)
 - [ESP-Timer](https://docs.espressif.com/projects/esp-idf/en/v4.4.7/esp32/api-reference/system/esp_timer.html)
 - [FreeRTOS in ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v4.4.7/esp32/api-reference/system/freertos.html)
-- [ADXL345_WE](https://github.com/wollewald/ADXL345_WE)
+- [TDK InvenSense ICM-42688-P, DS-000347 (PDF)](https://product.tdk.com/system/files/dam/doc/product/sensor/mortion-inertial/imu/data_sheet/ds-000347-icm-42688-p-v1.6.pdf)
+- [Analog Devices ADXL345 datasheet, Rev. G (PDF)](https://www.analog.com/media/en/technical-documentation/data-sheets/adxl345.pdf)
+- [Analog Devices ADXL345 product page](https://www.analog.com/en/products/adxl345.html)

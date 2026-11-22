@@ -1,16 +1,25 @@
 #pragma once
 #include <stdint.h>
 
+#ifndef DUSTMOVER_USE_SD
+#define DUSTMOVER_USE_SD 0
+#endif
+
 // Classic ESP32 DevKit / WROOM-32. Verify pins for your actual board.
 namespace config {
-constexpr int sda = 21;
-constexpr int scl = 22;
-constexpr int sdCs = 5;
-constexpr int sdSck = 18;
-constexpr int sdMiso = 19;
-constexpr int sdMosi = 23;
-constexpr uint8_t sensorAddress = 0x53;
-constexpr uint32_t samplePeriodUs = 10000;  // nominal 100 Hz polling
+constexpr int spiSck = 18;
+constexpr int spiMiso = 19;
+constexpr int spiMosi = 23;
+constexpr int sensorCs = 5;
+constexpr int dataReady = 27;
+constexpr bool useDataReadyInterrupt = true;  // Connect ICM-42688-P INT2 to dataReady.
+constexpr uint32_t sensorSpiHz = 1000000;
+constexpr uint32_t serialBaud = 230400;
+#if DUSTMOVER_USE_SD
+constexpr int sdCs = 26;
+static_assert(sensorCs != sdCs, "The SPI sensor and SD reader need separate CS pins.");
+constexpr uint32_t sdSpiHz = 4000000;
 constexpr uint32_t queueLength = 512;
 constexpr uint32_t flushPeriodMs = 1000;
+#endif
 }

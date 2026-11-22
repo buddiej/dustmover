@@ -7,6 +7,48 @@ Eine separate Projektbasis liegt in `firmware/DustMover/`. PlatformIO baut diese
 über `platformio.ini`; der ursprüngliche Sketch unten bleibt als Referenz erhalten.
 Einrichtung, Architektur, Verdrahtung und Grenzen: [Toolchain und Projektstart](docs/TOOLCHAIN.md).
 
+## ICM-42688-P über SPI
+
+Die ESP32-Firmware liest Beschleunigung und Drehrate über SPI mit nominell
+100 Hz und gibt die Messwerte am seriellen Monitor mit 230400 Baud aus.
+
+- [ICM-42688 SPI-Schaltskizze (SVG)](docs/icm42688-spi-schematic.svg)
+- [Pinbeschreibung und Kabelfarben zum Löten](docs/icm42688-spi-lotbeschreibung.md)
+
+Der Sensor verwendet `GPIO18 = SCK`, `GPIO23 = MOSI`, `GPIO19 = MISO`
+und `GPIO5 = CS`. Der Data-Ready-Interrupt startet den Lesevorgang.
+Dazu `INT2` mit `GPIO27` verbinden.
+
+Build für den klassischen ESP32 DevKit mit `pio run -e esp32dev`. Für
+einen Aufbau mit Kartenleser ist `esp32dev_sd` verfügbar.
+
+## Frühere Verdrahtung mit ADXL345
+
+The previous ESP32/ADXL345 wiring is shown in the Fritzing-style diagram:
+
+![DustMover ESP32, ADXL345 and microSD wiring](docs/dustmover-wiring.svg)
+
+Open the [full-size wiring diagram](docs/dustmover-wiring.svg) or the
+[detailed wiring notes](docs/dustmover-fritzing-wiring.md).
+
+Previous live-measurement connections:
+
+| ADXL345 | ESP32 | Function |
+| --- | --- | --- |
+| VCC | 3V3 | 3.3 V supply |
+| GND | GND | Common ground |
+| SDA | GPIO21 | I²C data |
+| SCL | GPIO22 | I²C clock |
+| CS | 3V3 | I²C mode |
+| SDO/ALT | GND | I²C address `0x53` |
+| INT1 | Not connected | Not used |
+| INT2 | GPIO27 | `DATA_READY` at 100 Hz |
+
+## References
+
+- [Analog Devices ADXL345 datasheet, Rev. G (PDF)](https://www.analog.com/media/en/technical-documentation/data-sheets/adxl345.pdf)
+- [Analog Devices ADXL345 product page](https://www.analog.com/en/products/adxl345.html)
+
 *Usage of*
 - SD-Card (for logging)
 - ADXL 345 acceleration sensor 
@@ -38,8 +80,8 @@ For more info see file README.md in this library or on URL:
 https://github.com/espressif/arduino-esp32/tree/master/libraries/SD
 
 # ADXL345 (I2C interface used) (VDD 3.3V)
-- Int1 (connected to GPIO27)
-- Int2 (connected to GPIO2)
+- INT2 / DATA_READY (connected to GPIO27)
+- INT1 not connected; GPIO2 remains open as an ESP32 strapping pin
 - SCL (GPIO22)
 - SDA (GPIO21)
 

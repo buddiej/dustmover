@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1050" viewBox="0 0 1600 1050" role="img" aria-labelledby="title desc">
+  <title id="title">DustMover – GY-601N1 mit ICM-42688-P über SPI am ESP32</title>
+  <desc id="desc">4-Draht-SPI-Verdrahtung mit den aufgedruckten GY-601N1-Pinnamen VCC, GND, SCL, SDA, SA0, CS, INT1 und INT2. CS ist mit GPIO5 und INT2 mit GPIO27 verbunden.</desc>
+  <style>
+    text { font-family: Arial, Helvetica, sans-serif; fill: #17202a; }
+    .title { font-size: 32px; font-weight: 700; }
+    .subtitle { font-size: 17px; fill: #53606d; }
+    .component { fill: #f7f9fb; stroke: #263746; stroke-width: 3; }
+    .head { fill: #e8eef4; stroke: #263746; stroke-width: 3; }
+    .label { font-size: 22px; font-weight: 700; }
+    .pin { font-size: 16px; }
+    .silk { font-weight: 700; }
+    .small { font-size: 14px; fill: #53606d; }
+    .wire { fill: none; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+    .power { stroke: #d94141; }
+    .ground, .cs { stroke: #ffffff; }
+    .sck { stroke: #eac000; }
+    .mosi { stroke: #249340; }
+    .miso { stroke: #8b522f; }
+    .int { stroke: #000000; }
+    .wire-outline { stroke: #65717c; stroke-width: 7; }
+    .white-pin { stroke: #65717c; stroke-width: 1; }
+    .optional { stroke-dasharray: 10 8; }
+  </style>
+
+  <rect width="1600" height="1050" fill="#ffffff"/>
+  <text x="60" y="58" class="title">DustMover – ICM-42688-P über 4-Draht-SPI</text>
+  <text x="60" y="88" class="subtitle">ESP32 DevKit / WROOM-32 · GY-601N1 · 3,3-V-Logik</text>
+
+  <!-- ESP32 -->
+  <rect x="70" y="150" width="430" height="590" rx="12" class="component"/>
+  <rect x="70" y="150" width="430" height="66" rx="12" class="head"/>
+  <text x="285" y="190" text-anchor="middle" class="label">ESP32 DevKit / WROOM-32</text>
+  <text x="105" y="255" class="pin">3V3</text><circle cx="470" cy="249" r="8" fill="#d94141"/>
+  <text x="105" y="305" class="pin">GND</text><circle cx="470" cy="299" r="8" fill="#ffffff" class="white-pin"/>
+  <text x="105" y="355" class="pin">GPIO18 · SCK</text><circle cx="470" cy="349" r="8" fill="#eac000"/>
+  <text x="105" y="405" class="pin">GPIO23 · MOSI</text><circle cx="470" cy="399" r="8" fill="#249340"/>
+  <text x="105" y="455" class="pin">GPIO19 · MISO</text><circle cx="470" cy="449" r="8" fill="#8b522f"/>
+  <text x="105" y="505" class="pin">GPIO5 · ICM CS</text><circle cx="470" cy="499" r="8" fill="#ffffff" class="white-pin"/>
+  <text x="105" y="605" class="pin">GPIO27 · INT2 / DATA_READY</text><circle cx="470" cy="599" r="8" fill="#000000"/>
+  <text x="105" y="638" class="small">GPIO5 ist ein Strapping-Pin. CS beim Start High halten.</text>
+
+  <!-- Sensor module -->
+  <rect x="970" y="150" width="370" height="500" rx="12" class="component"/>
+  <rect x="970" y="150" width="370" height="66" rx="12" class="head"/>
+  <text x="1155" y="190" text-anchor="middle" class="label">GY-601N1 · ICM-42688-P</text>
+  <text x="1010" y="233" class="small">Platinenaufdruck und SPI-Funktion</text>
+  <text x="1010" y="255" class="pin"><tspan class="silk">VCC</tspan> · 3,3 V</text><circle cx="990" cy="249" r="8" fill="#d94141"/>
+  <text x="1010" y="305" class="pin"><tspan class="silk">GND</tspan></text><circle cx="990" cy="299" r="8" fill="#ffffff" class="white-pin"/>
+  <text x="1010" y="355" class="pin"><tspan class="silk">SCL</tspan> · SCK (SPI-Takt)</text><circle cx="990" cy="349" r="8" fill="#eac000"/>
+  <text x="1010" y="405" class="pin"><tspan class="silk">SDA</tspan> · SDI (MOSI)</text><circle cx="990" cy="399" r="8" fill="#249340"/>
+  <text x="1010" y="455" class="pin"><tspan class="silk">SA0</tspan> · SDO (MISO)</text><circle cx="990" cy="449" r="8" fill="#8b522f"/>
+  <text x="1010" y="505" class="pin"><tspan class="silk">CS</tspan> · Chip-Select (aktiv Low)</text><circle cx="990" cy="499" r="8" fill="#ffffff" class="white-pin"/>
+  <text x="1010" y="555" class="pin"><tspan class="silk">INT1</tspan> · bleibt frei</text><circle cx="990" cy="549" r="6" fill="#ffffff" class="white-pin"/>
+  <text x="1010" y="605" class="pin"><tspan class="silk">INT2</tspan> · DATA_READY</text><circle cx="990" cy="599" r="8" fill="#000000"/>
+  <text x="1010" y="632" class="small">Gegenüberliegende Leiste V G R T I P bleibt frei.</text>
+
+  <!-- Main wires -->
+  <path d="M470 299 H720 V299 H990" class="wire wire-outline"/>
+  <path d="M470 499 H730 V499 H990" class="wire wire-outline"/>
+  <path d="M470 249 H760 V249 H990" class="wire power"/>
+  <path d="M470 299 H720 V299 H990" class="wire ground"/>
+  <path d="M470 349 H790 V349 H990" class="wire sck"/>
+  <path d="M470 399 H750 V399 H990" class="wire mosi"/>
+  <path d="M470 449 H770 V449 H990" class="wire miso"/>
+  <path d="M470 499 H730 V499 H990" class="wire cs"/>
+  <path d="M470 599 H990" class="wire int optional"/>
+
+  <!-- Labels along wires -->
+  <text x="600" y="238" class="small">3V3</text>
+  <text x="600" y="288" class="small">GND</text>
+  <text x="600" y="338" class="small">SPI SCK</text>
+  <text x="600" y="388" class="small">SPI MOSI</text>
+  <text x="600" y="438" class="small">SPI MISO</text>
+  <text x="600" y="488" class="small">SPI CS (GPIO5)</text>
+  <text x="600" y="588" class="small">INT2 / DRDY</text>
+
+  <!-- Pull-up and decoupling -->
+  <rect x="610" y="715" width="260" height="180" rx="12" class="component"/>
+  <text x="740" y="750" text-anchor="middle" class="label">Empfohlene Ergänzung</text>
+  <text x="635" y="790" class="pin">R1 10 kΩ: CS → 3V3</text>
+  <text x="635" y="825" class="pin">C1 100 nF: 3V3 → GND</text>
+  <text x="635" y="860" class="small">direkt am Sensormodul platzieren</text>
+  <text x="635" y="882" class="small">falls auf dem Modul nicht vorhanden</text>
+  <path d="M730 499 V672" class="wire wire-outline optional"/>
+  <path d="M730 499 V672" class="wire cs optional"/>
+  <path d="M760 249 V672" class="wire power optional"/>
+  <path d="M800 299 V672" class="wire wire-outline optional"/>
+  <path d="M800 299 V672" class="wire ground optional"/>
+  <text x="716" y="688" class="small">CS</text>
+  <text x="748" y="688" class="small">3V3</text>
+  <text x="788" y="688" class="small">GND</text>
+
+  <!-- Legend -->
+  <g transform="translate(70 820)">
+    <text x="0" y="0" class="label">Legende</text>
+    <line x1="0" y1="30" x2="42" y2="30" class="wire power"/><text x="55" y="36" class="pin">Versorgung</text>
+    <line x1="0" y1="62" x2="42" y2="62" class="wire wire-outline"/>
+    <line x1="0" y1="62" x2="42" y2="62" class="wire ground"/><text x="55" y="68" class="pin">Masse</text>
+    <line x1="0" y1="94" x2="42" y2="94" class="wire sck"/><text x="55" y="100" class="pin">SPI SCK</text>
+    <line x1="0" y1="126" x2="42" y2="126" class="wire mosi"/><text x="55" y="132" class="pin">SPI MOSI / SDI</text>
+    <line x1="220" y1="30" x2="262" y2="30" class="wire miso"/><text x="275" y="36" class="pin">SPI MISO / SDO</text>
+    <line x1="220" y1="62" x2="262" y2="62" class="wire wire-outline"/>
+    <line x1="220" y1="62" x2="262" y2="62" class="wire cs"/><text x="275" y="68" class="pin">Chip Select</text>
+    <line x1="220" y1="94" x2="262" y2="94" class="wire int optional"/><text x="275" y="100" class="pin">INT2 / DRDY</text>
+  </g>
+
+  <text x="70" y="1018" class="small">Beim Löten die aufgedruckten Pinnamen am ESP32 und am GY-601N1 abgleichen.</text>
+</svg>

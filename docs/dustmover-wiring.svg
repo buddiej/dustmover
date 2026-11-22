@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1280" viewBox="0 0 1400 1280" role="img" aria-labelledby="title desc">
+  <title id="title">DustMover ESP32, ADXL345 und microSD Verdrahtung</title>
+  <desc id="desc">Schematische Fritzing-Vorlage mit 3,3-Volt-Versorgung, I2C zum ADXL345 und SPI zur SD-Karte.</desc>
+  <style>
+    text { font-family: Arial, Helvetica, sans-serif; fill: #17202a; }
+    .title { font-size: 30px; font-weight: 700; }
+    .subtitle { font-size: 16px; fill: #53606d; }
+    .component { fill: #f7f9fb; stroke: #263746; stroke-width: 3; }
+    .head { fill: #e8eef4; stroke: #263746; stroke-width: 3; }
+    .label { font-size: 22px; font-weight: 700; }
+    .pin { font-size: 16px; }
+    .small { font-size: 14px; fill: #53606d; }
+    .warning { fill: #fff5d6; stroke: #c58b00; stroke-width: 2; }
+    .warning-text { font-size: 15px; fill: #6d4d00; }
+    .wire { fill: none; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+    .power { stroke: #d94141; }
+    .ground { stroke: #222b33; }
+    .sda { stroke: #2e9b63; }
+    .scl { stroke: #2878c8; }
+    .cs { stroke: #e58a24; }
+    .mosi { stroke: #b35bc7; }
+    .miso { stroke: #7956c9; }
+    .sck { stroke: #20a7a0; }
+  </style>
+  <rect width="1400" height="900" fill="#ffffff"/>
+  <text x="60" y="58" class="title">DustMover – Fritzing-Verdrahtung</text>
+  <text x="60" y="88" class="subtitle">ESP32 DevKit · ADXL345 über I2C · DATA_READY an INT1 · microSD über SPI</text>
+
+  <rect x="70" y="150" width="430" height="560" rx="12" class="component"/>
+  <rect x="70" y="150" width="430" height="66" rx="12" class="head"/>
+  <text x="285" y="190" text-anchor="middle" class="label">ESP32 DevKit / WROOM-32</text>
+  <text x="105" y="250" class="pin">3V3</text><circle cx="470" cy="244" r="8" fill="#d94141"/>
+  <text x="105" y="290" class="pin">GND</text><circle cx="470" cy="284" r="8" fill="#222b33"/>
+  <text x="105" y="330" class="pin">GPIO21 · SDA</text><circle cx="470" cy="324" r="8" fill="#2e9b63"/>
+  <text x="105" y="370" class="pin">GPIO22 · SCL</text><circle cx="470" cy="364" r="8" fill="#2878c8"/>
+  <text x="105" y="410" class="pin">GPIO5 · SD CS</text><circle cx="470" cy="404" r="8" fill="#e58a24"/>
+  <text x="105" y="450" class="pin">GPIO23 · MOSI</text><circle cx="470" cy="444" r="8" fill="#b35bc7"/>
+  <text x="105" y="490" class="pin">GPIO19 · MISO</text><circle cx="470" cy="484" r="8" fill="#7956c9"/>
+  <text x="105" y="530" class="pin">GPIO18 · SCK</text><circle cx="470" cy="524" r="8" fill="#20a7a0"/>
+  <text x="105" y="570" class="pin">GPIO27 · DATA_READY / INT2</text><circle cx="470" cy="564" r="8" fill="#d66a00"/>
+  <text x="105" y="610" class="small">UART debug: USB / 230400 baud</text>
+  <text x="105" y="636" class="small">Live-Firmware: SD wird nicht initialisiert</text>
+
+  <rect x="780" y="150" width="260" height="320" rx="12" class="component"/>
+  <rect x="780" y="150" width="260" height="58" rx="12" class="head"/>
+  <text x="910" y="185" text-anchor="middle" class="label">ADXL345</text>
+  <text x="810" y="245" class="pin">VCC · 3V3</text><circle cx="790" cy="240" r="8" fill="#d94141"/>
+  <text x="810" y="280" class="pin">GND</text><circle cx="790" cy="275" r="8" fill="#222b33"/>
+  <text x="810" y="315" class="pin">SDA</text><circle cx="790" cy="310" r="8" fill="#2e9b63"/>
+  <text x="810" y="350" class="pin">SCL</text><circle cx="790" cy="345" r="8" fill="#2878c8"/>
+  <text x="810" y="385" class="pin">CS · High</text><circle cx="790" cy="380" r="8" fill="#d94141"/>
+  <text x="810" y="420" class="pin">SDO · Low = 0x53</text><circle cx="790" cy="415" r="8" fill="#222b33"/>
+  <text x="810" y="455" class="pin">INT1 · DATA_READY</text><circle cx="790" cy="450" r="8" fill="#d66a00"/>
+
+  <rect x="780" y="520" width="300" height="300" rx="12" class="component"/>
+  <rect x="780" y="520" width="300" height="58" rx="12" class="head"/>
+  <text x="930" y="555" text-anchor="middle" class="label">microSD SPI-Breakout</text>
+  <text x="815" y="615" class="pin">VCC · 3V3</text><circle cx="790" cy="610" r="8" fill="#d94141"/>
+  <text x="815" y="650" class="pin">GND</text><circle cx="790" cy="645" r="8" fill="#222b33"/>
+  <text x="815" y="685" class="pin">CS / SS</text><circle cx="790" cy="680" r="8" fill="#e58a24"/>
+  <text x="815" y="720" class="pin">MOSI / DI</text><circle cx="790" cy="715" r="8" fill="#b35bc7"/>
+  <text x="815" y="755" class="pin">MISO / DO</text><circle cx="790" cy="750" r="8" fill="#7956c9"/>
+  <text x="815" y="790" class="pin">SCK</text><circle cx="790" cy="785" r="8" fill="#20a7a0"/>
+
+  <path d="M470 244 H650 V240 H790" class="wire power"/>
+  <path d="M470 244 H610 V610 H790" class="wire power"/>
+  <path d="M470 284 H630 V275 H790" class="wire ground"/>
+  <path d="M470 284 H590 V645 H790" class="wire ground"/>
+  <path d="M470 324 H680 V310 H790" class="wire sda"/>
+  <path d="M470 364 H700 V345 H790" class="wire scl"/>
+  <path d="M470 404 H720 V680 H790" class="wire cs"/>
+  <path d="M470 444 H665 V715 H790" class="wire mosi"/>
+  <path d="M470 484 H680 V750 H790" class="wire miso"/>
+  <path d="M470 524 H695 V785 H790" class="wire sck"/>
+  <path d="M470 564 H730 V450 H790" class="wire" stroke="#d66a00"/>
+  <path d="M650 240 V380 H790" class="wire power"/>
+  <path d="M630 275 V415 H790" class="wire ground"/>
+
+  <text x="530" y="316" class="small">3V3</text>
+  <text x="540" y="378" class="small">GND</text>
+  <text x="555" y="315" class="small">GPIO21 SDA</text>
+  <text x="555" y="354" class="small">GPIO22 SCL</text>
+  <text x="555" y="444" class="small">GPIO5 CS</text>
+  <text x="555" y="480" class="small">GPIO23 MOSI</text>
+  <text x="555" y="520" class="small">GPIO19 MISO</text>
+  <text x="555" y="560" class="small">GPIO18 SCK</text>
+  <text x="555" y="600" class="small">GPIO27 DATA_READY / INT2</text>
+
+  <rect x="70" y="760" width="620" height="90" rx="10" class="warning"/>
+  <text x="90" y="790" class="warning-text">Hinweis: GPIO5 ist ein ESP32-Strapping-Pin.</text>
+  <text x="90" y="815" class="warning-text">SD-Breakout nur mit 3,3-V-Logik verwenden.</text>
+  <text x="90" y="840" class="warning-text">SD-Verbindungen sind im aktuellen Live-Modus unbenutzt.</text>
+
+  <g transform="translate(1120 170)">
+    <text x="0" y="0" class="label">Legende</text>
+    <line x1="0" y1="30" x2="42" y2="30" class="wire power"/><text x="55" y="36" class="pin">Versorgung</text>
+    <line x1="0" y1="62" x2="42" y2="62" class="wire ground"/><text x="55" y="68" class="pin">GND</text>
+    <line x1="0" y1="94" x2="42" y2="94" class="wire sda"/><text x="55" y="100" class="pin">I2C SDA</text>
+    <line x1="0" y1="126" x2="42" y2="126" class="wire scl"/><text x="55" y="132" class="pin">I2C SCL</text>
+    <line x1="0" y1="158" x2="42" y2="158" class="wire cs"/><text x="55" y="164" class="pin">SPI CS</text>
+    <line x1="0" y1="190" x2="42" y2="190" class="wire mosi"/><text x="55" y="196" class="pin">SPI MOSI</text>
+    <line x1="0" y1="222" x2="42" y2="222" class="wire miso"/><text x="55" y="228" class="pin">SPI MISO</text>
+    <line x1="0" y1="254" x2="42" y2="254" class="wire sck"/><text x="55" y="260" class="pin">SPI SCK</text>
+  </g>
+
+  <!-- separate ADXL345 SPI alternative -->
+  <line x1="70" y1="910" x2="1330" y2="910" stroke="#b8c2cc" stroke-width="2"/>
+  <text x="70" y="955" class="title" style="font-size:24px">Alternative: ADXL345 über separaten SPI-Bus</text>
+  <text x="70" y="982" class="subtitle">Die SD-Karte bleibt auf GPIO5/18/19/23; der ADXL345 verwendet eigene Leitungen.</text>
+
+  <rect x="70" y="1020" width="430" height="210" rx="12" class="component"/>
+  <rect x="70" y="1020" width="430" height="54" rx="12" class="head"/>
+  <text x="285" y="1054" text-anchor="middle" class="label">ESP32 – separate ADXL-SPI-Pins</text>
+  <text x="105" y="1105" class="pin">3V3</text><circle cx="470" cy="1099" r="8" fill="#d94141"/>
+  <text x="105" y="1140" class="pin">GND</text><circle cx="470" cy="1134" r="8" fill="#222b33"/>
+  <text x="105" y="1175" class="pin">GPIO26 · ADXL CS</text><circle cx="470" cy="1169" r="8" fill="#e58a24"/>
+  <text x="105" y="1210" class="pin">GPIO25 SCLK · GPIO33 MOSI · GPIO32 MISO</text>
+
+  <rect x="780" y="1020" width="330" height="210" rx="12" class="component"/>
+  <rect x="780" y="1020" width="330" height="54" rx="12" class="head"/>
+  <text x="945" y="1054" text-anchor="middle" class="label">ADXL345 · 4-Wire SPI</text>
+  <text x="815" y="1105" class="pin">VCC · 3V3</text><circle cx="790" cy="1099" r="8" fill="#d94141"/>
+  <text x="815" y="1140" class="pin">GND</text><circle cx="790" cy="1134" r="8" fill="#222b33"/>
+  <text x="815" y="1175" class="pin">CS · GPIO26</text><circle cx="790" cy="1169" r="8" fill="#e58a24"/>
+  <text x="815" y="1210" class="pin">SCLK 25 · SDI 33 · SDO 32</text>
+
+  <path d="M470 1099 H650 V1099 H790" class="wire power"/>
+  <path d="M470 1134 H630 V1134 H790" class="wire ground"/>
+  <path d="M470 1169 H700 V1169 H790" class="wire cs"/>
+  <path d="M500 1210 H670 V1195 H790" class="wire sck"/>
+  <path d="M500 1210 H650 V1210 H790" class="wire mosi"/>
+  <path d="M500 1210 H630 V1225 H790" class="wire miso"/>
+  <text x="540" y="1090" class="small">3V3</text>
+  <text x="535" y="1125" class="small">GND</text>
+  <text x="555" y="1160" class="small">CS</text>
+  <text x="535" y="1190" class="small">SCLK / MOSI / MISO</text>
+  <rect x="1135" y="1020" width="195" height="210" rx="10" class="warning"/>
+  <text x="1150" y="1050" class="warning-text">SPI 4-Wire:</text>
+  <text x="1150" y="1080" class="warning-text">CS low</text>
+  <text x="1150" y="1110" class="warning-text">SDI = MOSI</text>
+  <text x="1150" y="1140" class="warning-text">SDO = MISO</text>
+  <text x="1150" y="1185" class="warning-text">I2C-Adresse</text>
+  <text x="1150" y="1215" class="warning-text">hier unbenutzt</text>
+</svg>
